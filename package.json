@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "displayName": "Neovim IDE",
   "description": "Neovim integration with the Unity game engine. Inspired from the official Visual Studio package at: https://github.com/needle-mirror/com.unity.ide.visualstudio/tree/master",
-  "unity": "2019.1",
+  "unity": "6000.1",
   "documentationUrl": "https://github.com/walcht/com.walcht.ide.neovim",
   "changelogUrl": "https://github.com/walcht/com.walcht.ide.neovim",
   "licensesUrl": "https://github.com/walcht/com.walcht.ide.neovim",
@@ -19,7 +19,7 @@
   },
   "author": {
     "name": "walcht",
-    "email": "walid.chtioui@ensi-uma.tn",
+    "email": "walid.chtioui.main@gmail.com",
     "url": "https://github.com/walcht"
   }
 }
