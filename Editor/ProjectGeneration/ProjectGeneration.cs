@@ -4,823 +4,1022 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using System.Security.Cryptography;
-using SR = System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
+using Unity.CodeEditor;
+using Unity.Profiling;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
-using UnityEngine.Profiling;
 
-public interface IGenerator
+namespace Neovim.Editor
 {
-  bool SyncIfNeeded(List<string> affectedFiles, string[] reimportedFiles);
-  void Sync();
-  string SolutionFile();
-  string ProjectDirectory { get; }
-  IAssemblyNameProvider AssemblyNameProvider { get; }
-  void GenerateAll(bool generateAll);
-  bool SolutionExists();
-}
+	public enum ScriptingLanguage
+	{
+		None,
+		CSharp
+	}
 
-public class ProjectGeneration : IGenerator
-{
-  enum ScriptingLanguage
-  {
-    None,
-    CSharp
-  }
+	public interface IGenerator
+	{
+		bool SyncIfNeeded(IEnumerable<string> affectedFiles, IEnumerable<string> reimportedFiles);
+		void Sync();
+		bool HasSolutionBeenGenerated();
+		bool IsSupportedFile(string path);
+		string SolutionFile();
+		string ProjectDirectory { get; }
+		IAssemblyNameProvider AssemblyNameProvider { get; }
+	}
 
-  public static readonly string MSBuildNamespaceUri = "http://schemas.microsoft.com/developer/msbuild/2003";
+	public class ProjectGeneration : IGenerator
+	{
+		// do not remove because of the Validation API, used in LegacyStyleProjectGeneration
+		public static readonly string MSBuildNamespaceUri = "http://schemas.microsoft.com/developer/msbuild/2003";
 
-  const string k_WindowsNewline = "\r\n";
+		public IAssemblyNameProvider AssemblyNameProvider => m_AssemblyNameProvider;
+		public string ProjectDirectory { get; }
 
-  const string k_SettingsJson = @"{
-    ""files.exclude"":
-    {
-        ""**/.DS_Store"":true,
-        ""**/.git"":true,
-        ""**/.gitmodules"":true,
-        ""**/*.booproj"":true,
-        ""**/*.pidb"":true,
-        ""**/*.suo"":true,
-        ""**/*.user"":true,
-        ""**/*.userprefs"":true,
-        ""**/*.unityproj"":true,
-        ""**/*.dll"":true,
-        ""**/*.exe"":true,
-        ""**/*.pdf"":true,
-        ""**/*.mid"":true,
-        ""**/*.midi"":true,
-        ""**/*.wav"":true,
-        ""**/*.gif"":true,
-        ""**/*.ico"":true,
-        ""**/*.jpg"":true,
-        ""**/*.jpeg"":true,
-        ""**/*.png"":true,
-        ""**/*.psd"":true,
-        ""**/*.tga"":true,
-        ""**/*.tif"":true,
-        ""**/*.tiff"":true,
-        ""**/*.3ds"":true,
-        ""**/*.3DS"":true,
-        ""**/*.fbx"":true,
-        ""**/*.FBX"":true,
-        ""**/*.lxo"":true,
-        ""**/*.LXO"":true,
-        ""**/*.ma"":true,
-        ""**/*.MA"":true,
-        ""**/*.obj"":true,
-        ""**/*.OBJ"":true,
-        ""**/*.asset"":true,
-        ""**/*.cubemap"":true,
-        ""**/*.flare"":true,
-        ""**/*.mat"":true,
-        ""**/*.meta"":true,
-        ""**/*.prefab"":true,
-        ""**/*.unity"":true,
-        ""build/"":true,
-        ""Build/"":true,
-        ""Library/"":true,
-        ""library/"":true,
-        ""obj/"":true,
-        ""Obj/"":true,
-        ""ProjectSettings/"":true,
-        ""temp/"":true,
-        ""Temp/"":true
-    }
-}";
+		// Use this to have the same newline ending on all platforms for consistency.
+		internal const string k_WindowsNewline = "\r\n";
 
-  /// <summary>
-  /// Map source extensions to ScriptingLanguages
-  /// </summary>
-  static readonly Dictionary<string, ScriptingLanguage> k_BuiltinSupportedExtensions = new Dictionary<string, ScriptingLanguage>
-        {
-            { "cs", ScriptingLanguage.CSharp },
-            { "uxml", ScriptingLanguage.None },
-            { "uss", ScriptingLanguage.None },
-            { "shader", ScriptingLanguage.None },
-            { "compute", ScriptingLanguage.None },
-            { "cginc", ScriptingLanguage.None },
-            { "hlsl", ScriptingLanguage.None },
-            { "glslinc", ScriptingLanguage.None },
-            { "template", ScriptingLanguage.None },
-            { "raytrace", ScriptingLanguage.None }
-        };
+		const string m_SolutionProjectEntryTemplate = @"Project(""{{{0}}}"") = ""{1}"", ""{2}"", ""{{{3}}}""{4}EndProject";
 
-  readonly string m_SolutionProjectEntryTemplate = string.Join("\r\n", @"Project(""{{{0}}}"") = ""{1}"", ""{2}"", ""{{{3}}}""", @"EndProject").Replace("    ", "\t");
+		readonly string m_SolutionProjectConfigurationTemplate = string.Join(k_WindowsNewline,
+			@"        {{{0}}}.Debug|Any CPU.ActiveCfg = Debug|Any CPU",
+			@"        {{{0}}}.Debug|Any CPU.Build.0 = Debug|Any CPU",
+			@"        {{{0}}}.Release|Any CPU.ActiveCfg = Release|Any CPU",
+			@"        {{{0}}}.Release|Any CPU.Build.0 = Release|Any CPU").Replace("    ", "\t");
 
-  readonly string m_SolutionProjectConfigurationTemplate = string.Join("\r\n", @"        {{{0}}}.Debug|Any CPU.ActiveCfg = Debug|Any CPU", @"        {{{0}}}.Debug|Any CPU.Build.0 = Debug|Any CPU").Replace("    ", "\t");
+		static readonly string[] k_ReimportSyncExtensions = { ".dll", ".asmdef" };
 
-  static readonly string[] k_ReimportSyncExtensions = { ".dll", ".asmdef" };
+		HashSet<string> m_ProjectSupportedExtensions = new HashSet<string>();
+		HashSet<string> m_BuiltinSupportedExtensions = new HashSet<string>();
+		HashSet<string> m_DefaultSupportedExtensions = new HashSet<string>(new string[] { "dll", "asmdef", "additionalfile" });
 
-  string[] m_ProjectSupportedExtensions = Array.Empty<string>();
-  const string k_TargetLanguageVersion = "latest";
+		readonly string m_ProjectName;
+		internal readonly IAssemblyNameProvider m_AssemblyNameProvider;
+		readonly IGUIDGenerator m_GUIDGenerator;
+		bool m_ShouldGenerateAll;
 
-  public string ProjectDirectory { get; }
-  IAssemblyNameProvider IGenerator.AssemblyNameProvider => m_AssemblyNameProvider;
+		public ProjectGeneration() : this(Directory.GetParent(Application.dataPath).FullName)
+		{
+		}
 
-  public void GenerateAll(bool generateAll)
-  {
-    m_AssemblyNameProvider.ToggleProjectGeneration(
-        ProjectGenerationFlag.BuiltIn
-        | ProjectGenerationFlag.Embedded
-        | ProjectGenerationFlag.Git
-        | ProjectGenerationFlag.Local
-#if UNITY_2019_3_OR_NEWER
-                | ProjectGenerationFlag.LocalTarBall
+		public ProjectGeneration(string tempDirectory) : this(tempDirectory, new AssemblyNameProvider(), new GUIDProvider())
+		{
+		}
+
+		public ProjectGeneration(string tempDirectory, IAssemblyNameProvider assemblyNameProvider, IGUIDGenerator guidGenerator)
+		{
+			ProjectDirectory = FileUtility.NormalizeWindowsToUnix(tempDirectory);
+			m_ProjectName = Path.GetFileName(ProjectDirectory);
+			m_AssemblyNameProvider = assemblyNameProvider;
+			m_GUIDGenerator = guidGenerator;
+
+			SetupProjectSupportedExtensions();
+		}
+
+		internal virtual GeneratorStyle Style => GeneratorStyle.Legacy;
+
+		/// <summary>
+		/// Syncs the scripting solution if any affected files are relevant.
+		/// </summary>
+		/// <returns>
+		/// Whether the solution was synced.
+		/// </returns>
+		/// <param name='affectedFiles'>
+		/// A set of files whose status has changed
+		/// </param>
+		/// <param name="reimportedFiles">
+		/// A set of files that got reimported
+		/// </param>
+		public bool SyncIfNeeded(IEnumerable<string> affectedFiles, IEnumerable<string> reimportedFiles)
+		{
+			using (solutionSyncMarker.Auto())
+			{
+				SetupProjectSupportedExtensions();
+
+				// Don't sync if we haven't synced before
+				var affected = affectedFiles as ICollection<string> ?? affectedFiles.ToArray();
+				var reimported = reimportedFiles as ICollection<string> ?? reimportedFiles.ToArray();
+				if (!HasFilesBeenModified(affected, reimported))
+				{
+					return false;
+				}
+
+				var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution);
+				var allProjectAssemblies = RelevantAssembliesForMode(assemblies).ToList();
+				SyncSolution(allProjectAssemblies);
+
+				var allAssetProjectParts = GenerateAllAssetProjectParts();
+
+				var affectedNames = affected
+					.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset))
+					.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name =>
+						name.Split(new[] { ".dll" }, StringSplitOptions.RemoveEmptyEntries)[0]);
+				var reimportedNames = reimported
+					.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset))
+					.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name =>
+						name.Split(new[] { ".dll" }, StringSplitOptions.RemoveEmptyEntries)[0]);
+				var affectedAndReimported = new HashSet<string>(affectedNames.Concat(reimportedNames));
+
+				foreach (var assembly in allProjectAssemblies)
+				{
+					if (!affectedAndReimported.Contains(assembly.name))
+						continue;
+
+					SyncProject(assembly,
+						allAssetProjectParts,
+						responseFilesData: ParseResponseFileData(assembly).ToArray());
+				}
+
+				return true;
+			}
+		}
+
+
+		private bool HasFilesBeenModified(IEnumerable<string> affectedFiles, IEnumerable<string> reimportedFiles)
+		{
+			return affectedFiles.Any(ShouldFileBePartOfSolution) || reimportedFiles.Any(ShouldSyncOnReimportedAsset);
+		}
+
+		private static bool ShouldSyncOnReimportedAsset(string asset)
+		{
+			return k_ReimportSyncExtensions.Contains(new FileInfo(asset).Extension);
+		}
+
+
+		static ProfilerMarker solutionSyncMarker = new ProfilerMarker("SolutionSynchronizerSync");
+
+		public void Sync()
+		{
+			SetupProjectSupportedExtensions();
+
+			(m_AssemblyNameProvider as AssemblyNameProvider)?.ResetPackageInfoCache();
+
+			var externalCodeAlreadyGeneratedProjects = OnPreGeneratingCSProjectFiles();
+
+			if (!externalCodeAlreadyGeneratedProjects)
+			{
+				GenerateAndWriteSolutionAndProjects();
+			}
+
+			OnGeneratedCSProjectFiles();
+		}
+
+		public bool HasSolutionBeenGenerated()
+		{
+			return File.Exists(SolutionFile());
+		}
+
+		private void SetupProjectSupportedExtensions()
+		{
+			m_ProjectSupportedExtensions = new HashSet<string>(m_AssemblyNameProvider.ProjectSupportedExtensions);
+			m_BuiltinSupportedExtensions = new HashSet<string>(EditorSettings.projectGenerationBuiltinExtensions);
+		}
+
+		private bool ShouldFileBePartOfSolution(string file)
+		{
+			// Exclude files coming from packages except if they are internalized.
+			if (m_AssemblyNameProvider.IsInternalizedPackagePath(file))
+			{
+				return false;
+			}
+
+			return IsSupportedFile(file);
+		}
+
+		private static string GetExtensionWithoutDot(string path)
+		{
+			// Prevent re-processing and information loss
+			if (!Path.HasExtension(path))
+				return path;
+
+			return Path
+				.GetExtension(path)
+				.TrimStart('.')
+				.ToLower();
+		}
+
+		public bool IsSupportedFile(string path)
+		{
+			return IsSupportedFile(path, out _);
+		}
+
+		private bool IsSupportedFile(string path, out string extensionWithoutDot)
+		{
+			extensionWithoutDot = GetExtensionWithoutDot(path);
+
+			// Dll's are not scripts but still need to be included
+			if (m_DefaultSupportedExtensions.Contains(extensionWithoutDot))
+				return true;
+
+			if (m_BuiltinSupportedExtensions.Contains(extensionWithoutDot))
+				return true;
+
+			if (m_ProjectSupportedExtensions.Contains(extensionWithoutDot))
+				return true;
+
+			return false;
+		}
+
+
+		private static ScriptingLanguage ScriptingLanguageFor(Assembly assembly)
+		{
+			var files = assembly.sourceFiles;
+
+			if (files.Length == 0)
+				return ScriptingLanguage.None;
+
+			return ScriptingLanguageForFile(files[0]);
+		}
+
+		internal static ScriptingLanguage ScriptingLanguageForExtension(string extensionWithoutDot)
+		{
+			return extensionWithoutDot == "cs" ? ScriptingLanguage.CSharp : ScriptingLanguage.None;
+		}
+
+		internal static ScriptingLanguage ScriptingLanguageForFile(string path)
+		{
+			return ScriptingLanguageForExtension(GetExtensionWithoutDot(path));
+		}
+
+		public void GenerateAndWriteSolutionAndProjects()
+		{
+			// Only synchronize assemblies that have associated source files and ones that we actually want in the project.
+			// This also filters out DLLs coming from .asmdef files in packages.
+			var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution).ToList();
+
+			var allAssetProjectParts = GenerateAllAssetProjectParts();
+
+			SyncSolution(assemblies);
+
+			var allProjectAssemblies = RelevantAssembliesForMode(assemblies);
+
+			foreach (var assembly in allProjectAssemblies)
+			{
+				SyncProject(assembly,
+					allAssetProjectParts,
+					responseFilesData: ParseResponseFileData(assembly).ToArray());
+			}
+		}
+
+		private IEnumerable<ResponseFileData> ParseResponseFileData(Assembly assembly)
+		{
+			var systemReferenceDirectories = CompilationPipeline.GetSystemAssemblyDirectories(assembly.compilerOptions.ApiCompatibilityLevel);
+
+			Dictionary<string, ResponseFileData> responseFilesData = assembly.compilerOptions.ResponseFiles.ToDictionary(x => x, x => m_AssemblyNameProvider.ParseResponseFile(
+				x,
+				ProjectDirectory,
+				systemReferenceDirectories
+			));
+
+			Dictionary<string, ResponseFileData> responseFilesWithErrors = responseFilesData.Where(x => x.Value.Errors.Any())
+				.ToDictionary(x => x.Key, x => x.Value);
+
+			if (responseFilesWithErrors.Any())
+			{
+				foreach (var error in responseFilesWithErrors)
+					foreach (var valueError in error.Value.Errors)
+					{
+						Debug.LogError($"{error.Key} Parse Error : {valueError}");
+					}
+			}
+
+			return responseFilesData.Select(x => x.Value);
+		}
+
+		private Dictionary<string, string> GenerateAllAssetProjectParts()
+		{
+			Dictionary<string, StringBuilder> stringBuilders = new Dictionary<string, StringBuilder>();
+
+			foreach (string asset in m_AssemblyNameProvider.GetAllAssetPaths())
+			{
+				// Exclude files coming from packages except if they are internalized.
+				if (m_AssemblyNameProvider.IsInternalizedPackagePath(asset))
+				{
+					continue;
+				}
+
+				if (IsSupportedFile(asset, out var extensionWithoutDot) && ScriptingLanguage.None == ScriptingLanguageForExtension(extensionWithoutDot))
+				{
+					// Find assembly the asset belongs to by adding script extension and using compilation pipeline.
+					var assemblyName = m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset);
+
+					if (string.IsNullOrEmpty(assemblyName))
+					{
+						continue;
+					}
+
+					assemblyName = Path.GetFileNameWithoutExtension(assemblyName);
+
+					if (!stringBuilders.TryGetValue(assemblyName, out var projectBuilder))
+					{
+						projectBuilder = new StringBuilder();
+						stringBuilders[assemblyName] = projectBuilder;
+					}
+
+					IncludeAsset(projectBuilder, IncludeAssetTag.None, asset);
+				}
+			}
+
+			var result = new Dictionary<string, string>();
+
+			foreach (var entry in stringBuilders)
+				result[entry.Key] = entry.Value.ToString();
+
+			return result;
+		}
+
+		internal enum IncludeAssetTag
+		{
+			Compile,
+			None
+		}
+
+		internal virtual void IncludeAsset(StringBuilder builder, IncludeAssetTag tag, string asset)
+		{
+			var filename = EscapedRelativePathFor(asset, out var packageInfo);
+
+			builder.Append("    <").Append(tag).Append(@" Include=""").Append(filename);
+			if (Path.IsPathRooted(filename) && packageInfo != null)
+			{
+				// We are outside the Unity project and using a package context
+				var linkPath = SkipPathPrefix(asset.NormalizePathSeparators(), packageInfo.assetPath.NormalizePathSeparators());
+
+				builder.Append(@""">").Append(k_WindowsNewline);
+				builder.Append("      <Link>").Append(linkPath).Append("</Link>").Append(k_WindowsNewline);
+				builder.Append($"    </{tag}>").Append(k_WindowsNewline);
+			}
+			else
+			{
+				builder.Append(@""" />").Append(k_WindowsNewline);
+			}
+		}
+
+		private void SyncProject(
+			Assembly assembly,
+			Dictionary<string, string> allAssetsProjectParts,
+			ResponseFileData[] responseFilesData)
+		{
+			SyncProjectFileIfNotChanged(
+				ProjectFile(assembly),
+				ProjectText(assembly, allAssetsProjectParts, responseFilesData));
+		}
+
+		private void SyncProjectFileIfNotChanged(string path, string newContents)
+		{
+			if (Path.GetExtension(path) == ".csproj")
+			{
+				newContents = OnGeneratedCSProject(path, newContents);
+			}
+
+			SyncFileIfNotChanged(path, newContents);
+		}
+
+		private void SyncSolutionFileIfNotChanged(string path, string newContents)
+		{
+			newContents = OnGeneratedSlnSolution(path, newContents);
+
+			SyncFileIfNotChanged(path, newContents);
+		}
+
+		static void OnGeneratedCSProjectFiles()
+		{
+			foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(nameof(OnGeneratedCSProjectFiles)))
+			{
+				method.Invoke(null, Array.Empty<object>());
+			}
+		}
+
+		private static bool OnPreGeneratingCSProjectFiles()
+		{
+			bool result = false;
+
+			foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(nameof(OnPreGeneratingCSProjectFiles)))
+			{
+				var retValue = method.Invoke(null, Array.Empty<object>());
+				if (method.ReturnType == typeof(bool))
+				{
+					result |= (bool)retValue;
+				}
+			}
+
+			return result;
+		}
+
+		private static string InvokeAssetPostProcessorGenerationCallbacks(string name, string path, string content)
+		{
+			foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(name))
+			{
+				var args = new[] { path, content };
+				var returnValue = method.Invoke(null, args);
+				if (method.ReturnType == typeof(string))
+				{
+					// We want to chain content update between invocations
+					content = (string)returnValue;
+				}
+			}
+
+			return content;
+		}
+
+		private static string OnGeneratedCSProject(string path, string content)
+		{
+			return InvokeAssetPostProcessorGenerationCallbacks(nameof(OnGeneratedCSProject), path, content);
+		}
+
+		private static string OnGeneratedSlnSolution(string path, string content)
+		{
+			return InvokeAssetPostProcessorGenerationCallbacks(nameof(OnGeneratedSlnSolution), path, content);
+		}
+
+		private void SyncFileIfNotChanged(string filename, string newContents)
+		{
+			try
+			{
+				if (File.Exists(filename) && newContents == File.ReadAllText(filename))
+				{
+					return;
+				}
+			}
+			catch (Exception exception)
+			{
+				Debug.LogException(exception);
+			}
+
+			File.WriteAllText(filename, newContents, Encoding.UTF8);
+		}
+
+		private string ProjectText(Assembly assembly,
+			Dictionary<string, string> allAssetsProjectParts,
+			ResponseFileData[] responseFilesData)
+		{
+			ProjectHeader(assembly, responseFilesData, out StringBuilder projectBuilder);
+
+			var references = new List<string>();
+
+			projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+			foreach (string file in assembly.sourceFiles)
+			{
+				if (!IsSupportedFile(file, out var extensionWithoutDot))
+					continue;
+
+				if ("dll" != extensionWithoutDot)
+				{
+					IncludeAsset(projectBuilder, IncludeAssetTag.Compile, file);
+				}
+				else
+				{
+					var fullFile = EscapedRelativePathFor(file, out _);
+					references.Add(fullFile);
+				}
+			}
+			projectBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+
+			// Append additional non-script files that should be included in project generation.
+			if (allAssetsProjectParts.TryGetValue(assembly.name, out var additionalAssetsForProject))
+			{
+				projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+
+				projectBuilder.Append(additionalAssetsForProject);
+
+				projectBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+
+			}
+
+			projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+
+			var responseRefs = responseFilesData.SelectMany(x => x.FullPathReferences.Select(r => r));
+			var internalAssemblyReferences = assembly.assemblyReferences
+				.Where(i => !i.sourceFiles.Any(ShouldFileBePartOfSolution)).Select(i => i.outputPath);
+			var allReferences =
+				assembly.compiledAssemblyReferences
+					.Union(responseRefs)
+					.Union(references)
+					.Union(internalAssemblyReferences);
+
+			foreach (var reference in allReferences)
+			{
+				string fullReference = Path.IsPathRooted(reference) ? reference : Path.Combine(ProjectDirectory, reference);
+				AppendReference(fullReference, projectBuilder);
+			}
+
+			projectBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+
+			if (0 < assembly.assemblyReferences.Length)
+			{
+				projectBuilder.Append("  <ItemGroup>").Append(k_WindowsNewline);
+				foreach (var reference in assembly.assemblyReferences.Where(i => i.sourceFiles.Any(ShouldFileBePartOfSolution)))
+				{
+					AppendProjectReference(assembly, reference, projectBuilder);
+				}
+
+				projectBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+			}
+
+			GetProjectFooter(projectBuilder);
+			return projectBuilder.ToString();
+		}
+
+		private static string XmlFilename(string path)
+		{
+			if (string.IsNullOrEmpty(path))
+				return path;
+
+			path = path.Replace(@"%", "%25");
+			path = path.Replace(@";", "%3b");
+
+			return XmlEscape(path);
+		}
+
+		private static string XmlEscape(string s)
+		{
+			return SecurityElement.Escape(s);
+		}
+
+		internal virtual void AppendProjectReference(Assembly assembly, Assembly reference, StringBuilder projectBuilder)
+		{
+		}
+
+		private void AppendReference(string fullReference, StringBuilder projectBuilder)
+		{
+			var escapedFullPath = EscapedRelativePathFor(fullReference, out _);
+			projectBuilder.Append(@"    <Reference Include=""").Append(Path.GetFileNameWithoutExtension(escapedFullPath)).Append(@""">").Append(k_WindowsNewline);
+			projectBuilder.Append("      <HintPath>").Append(escapedFullPath).Append("</HintPath>").Append(k_WindowsNewline);
+			projectBuilder.Append("      <Private>False</Private>").Append(k_WindowsNewline);
+			projectBuilder.Append("    </Reference>").Append(k_WindowsNewline);
+		}
+
+		public string ProjectFile(Assembly assembly)
+		{
+			return Path.Combine(ProjectDirectory, $"{m_AssemblyNameProvider.GetAssemblyName(assembly.outputPath, assembly.name)}.csproj");
+		}
+
+#if UNITY_EDITOR_WIN
+		private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;", RegexOptions.Compiled);
+#else
+		private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;|:", RegexOptions.Compiled);
 #endif
-                | ProjectGenerationFlag.PlayerAssemblies
-        | ProjectGenerationFlag.Registry
-        | ProjectGenerationFlag.Unknown);
-  }
 
-  readonly string m_ProjectName;
-  readonly IAssemblyNameProvider m_AssemblyNameProvider;
-  readonly IFileIO m_FileIOProvider;
-  readonly IGUIDGenerator m_GUIDProvider;
+		public string SolutionFile()
+		{
+			return Path.Combine(ProjectDirectory.NormalizePathSeparators(), $"{InvalidCharactersRegexPattern.Replace(m_ProjectName, "_")}.sln");
+		}
+
+		internal string GetLangVersion(Assembly assembly)
+		{
+			return UnityInstallation.LatestLanguageVersionSupported(assembly).ToString(2);
+		}
+
+		private static IEnumerable<string> GetOtherArguments(ResponseFileData[] responseFilesData, HashSet<string> names)
+		{
+			var lines = responseFilesData
+				.SelectMany(x => x.OtherArguments)
+				.Where(l => !string.IsNullOrEmpty(l))
+				.Select(l => l.Trim())
+				.Where(l => l.StartsWith("/") || l.StartsWith("-"));
+
+			foreach (var argument in lines)
+			{
+				var index = argument.IndexOf(":", StringComparison.Ordinal);
+				if (index == -1)
+					continue;
+
+				var key = argument
+					.Substring(1, index - 1)
+					.Trim();
+				
+				if (!names.Contains(key))
+					continue;
+
+				if (argument.Length <= index)
+					continue;
+
+				yield return argument
+					.Substring(index + 1)
+					.Trim();
+			}
+		}
+
+		private void SetAnalyzerAndSourceGeneratorProperties(Assembly assembly, ResponseFileData[] responseFilesData, ProjectProperties properties)
+		{
+			// TODO: add analyzers provided by Roslyn LSP
+			var analyzers = new List<string>();
+			var additionalFilePaths = new List<string>();
+			var rulesetPath = string.Empty;
+			var analyzerConfigPath = string.Empty;
+			var compilerOptions = assembly.compilerOptions;
 
-  const string k_ToolsVersion = "4.0";
-  const string k_ProductVersion = "10.0.20506";
-  const string k_BaseDirectory = ".";
-  const string k_TargetFrameworkVersion = "v4.7.1";
-  public ProjectGeneration(string tempDirectory)
-      : this(tempDirectory, new AssemblyNameProvider(), new FileIOProvider(), new GUIDProvider()) { }
-
-  public ProjectGeneration(string tempDirectory, IAssemblyNameProvider assemblyNameProvider, IFileIO fileIO, IGUIDGenerator guidGenerator)
-  {
-    ProjectDirectory = tempDirectory.NormalizePath();
-    m_ProjectName = Path.GetFileName(ProjectDirectory);
-    m_AssemblyNameProvider = assemblyNameProvider;
-    m_FileIOProvider = fileIO;
-    m_GUIDProvider = guidGenerator;
-  }
-
-  /// <summary>
-  /// Syncs the scripting solution if any affected files are relevant.
-  /// </summary>
-  /// <returns>
-  /// Whether the solution was synced.
-  /// </returns>
-  /// <param name='affectedFiles'>
-  /// A set of files whose status has changed
-  /// </param>
-  /// <param name="reimportedFiles">
-  /// A set of files that got reimported
-  /// </param>
-  public bool SyncIfNeeded(List<string> affectedFiles, string[] reimportedFiles)
-  {
-    Profiler.BeginSample("SolutionSynchronizerSync");
-    SetupProjectSupportedExtensions();
-
-    if (!HasFilesBeenModified(affectedFiles, reimportedFiles))
-    {
-      Profiler.EndSample();
-      return false;
-    }
-
-    var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution);
-    var allProjectAssemblies = RelevantAssembliesForMode(assemblies).ToList();
-    SyncSolution(allProjectAssemblies);
-
-    var allAssetProjectParts = GenerateAllAssetProjectParts();
-
-    var affectedNames = affectedFiles.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset)).Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Split(new[] { ".dll" }, StringSplitOptions.RemoveEmptyEntries)[0]);
-    var reimportedNames = reimportedFiles.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset)).Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Split(new[] { ".dll" }, StringSplitOptions.RemoveEmptyEntries)[0]);
-    var affectedAndReimported = new HashSet<string>(affectedNames.Concat(reimportedNames));
-
-    foreach (var assembly in allProjectAssemblies)
-    {
-      if (!affectedAndReimported.Contains(assembly.name))
-        continue;
-
-      SyncProject(assembly, allAssetProjectParts, ParseResponseFileData(assembly));
-    }
-
-    Profiler.EndSample();
-    return true;
-  }
-
-  bool HasFilesBeenModified(List<string> affectedFiles, string[] reimportedFiles)
-  {
-    return affectedFiles.Any(ShouldFileBePartOfSolution) || reimportedFiles.Any(ShouldSyncOnReimportedAsset);
-  }
-
-  static bool ShouldSyncOnReimportedAsset(string asset)
-  {
-    return k_ReimportSyncExtensions.Contains(new FileInfo(asset).Extension);
-  }
-
-  private static IEnumerable<SR.MethodInfo> GetPostProcessorCallbacks(string name)
-  {
-    return TypeCache
-        .GetTypesDerivedFrom<AssetPostprocessor>()
-        .Select(t => t.GetMethod(name, SR.BindingFlags.Public | SR.BindingFlags.NonPublic | SR.BindingFlags.Static))
-        .Where(m => m != null);
-  }
-
-  static void OnGeneratedCSProjectFiles()
-  {
-    foreach (var method in GetPostProcessorCallbacks(nameof(OnGeneratedCSProjectFiles)))
-    {
-      method.Invoke(null, Array.Empty<object>());
-    }
-  }
-
-  private static string InvokeAssetPostProcessorGenerationCallbacks(string name, string path, string content)
-  {
-    foreach (var method in GetPostProcessorCallbacks(name))
-    {
-      var args = new[] { path, content };
-      var returnValue = method.Invoke(null, args);
-      if (method.ReturnType == typeof(string))
-      {
-        // We want to chain content update between invocations
-        content = (string)returnValue;
-      }
-    }
-
-    return content;
-  }
-
-  private static string OnGeneratedCSProject(string path, string content)
-  {
-    return InvokeAssetPostProcessorGenerationCallbacks(nameof(OnGeneratedCSProject), path, content);
-  }
-
-  private static string OnGeneratedSlnSolution(string path, string content)
-  {
-    return InvokeAssetPostProcessorGenerationCallbacks(nameof(OnGeneratedSlnSolution), path, content);
-  }
-
-  public void Sync()
-  {
-    SetupProjectSupportedExtensions();
-    GenerateAndWriteSolutionAndProjects();
-
-    OnGeneratedCSProjectFiles();
-  }
-
-  public bool SolutionExists()
-  {
-    return m_FileIOProvider.Exists(SolutionFile());
-  }
-
-  void SetupProjectSupportedExtensions()
-  {
-    m_ProjectSupportedExtensions = m_AssemblyNameProvider.ProjectSupportedExtensions;
-  }
-
-  bool ShouldFileBePartOfSolution(string file)
-  {
-    // Exclude files coming from packages except if they are internalized.
-    if (m_AssemblyNameProvider.IsInternalizedPackagePath(file))
-    {
-      return false;
-    }
-
-    return HasValidExtension(file);
-  }
-
-  bool HasValidExtension(string file)
-  {
-    string extension = Path.GetExtension(file);
-
-    // Dll's are not scripts but still need to be included..
-    if (extension == ".dll")
-      return true;
-
-    if (file.ToLower().EndsWith(".asmdef"))
-      return true;
-
-    return IsSupportedExtension(extension);
-  }
-
-  bool IsSupportedExtension(string extension)
-  {
-    extension = extension.TrimStart('.');
-    if (k_BuiltinSupportedExtensions.ContainsKey(extension))
-      return true;
-    if (m_ProjectSupportedExtensions.Contains(extension))
-      return true;
-    return false;
-  }
-
-  static ScriptingLanguage ScriptingLanguageFor(Assembly assembly)
-  {
-    return ScriptingLanguageFor(GetExtensionOfSourceFiles(assembly.sourceFiles));
-  }
-
-  static string GetExtensionOfSourceFiles(string[] files)
-  {
-    return files.Length > 0 ? GetExtensionOfSourceFile(files[0]) : "NA";
-  }
-
-  static string GetExtensionOfSourceFile(string file)
-  {
-    var ext = Path.GetExtension(file).ToLower();
-    ext = ext.Substring(1); //strip dot
-    return ext;
-  }
-
-  static ScriptingLanguage ScriptingLanguageFor(string extension)
-  {
-    return k_BuiltinSupportedExtensions.TryGetValue(extension.TrimStart('.'), out var result)
-        ? result
-        : ScriptingLanguage.None;
-  }
-
-  public void GenerateAndWriteSolutionAndProjects()
-  {
-    // Only synchronize assemblies that have associated source files and ones that we actually want in the project.
-    // This also filters out DLLs coming from .asmdef files in packages.
-    var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution).ToArray();
-
-    var allAssetProjectParts = GenerateAllAssetProjectParts();
-
-    SyncSolution(assemblies);
-    var allProjectAssemblies = RelevantAssembliesForMode(assemblies).ToList();
-    foreach (Assembly assembly in allProjectAssemblies)
-    {
-      var responseFileData = ParseResponseFileData(assembly);
-      SyncProject(assembly, allAssetProjectParts, responseFileData);
-    }
-
-    WriteVSCodeSettingsFiles();
-  }
-
-  List<ResponseFileData> ParseResponseFileData(Assembly assembly)
-  {
-    var systemReferenceDirectories = CompilationPipeline.GetSystemAssemblyDirectories(assembly.compilerOptions.ApiCompatibilityLevel);
-
-    Dictionary<string, ResponseFileData> responseFilesData = assembly.compilerOptions.ResponseFiles.ToDictionary(x => x, x => m_AssemblyNameProvider.ParseResponseFile(
-        x,
-        ProjectDirectory,
-        systemReferenceDirectories
-    ));
-
-    Dictionary<string, ResponseFileData> responseFilesWithErrors = responseFilesData.Where(x => x.Value.Errors.Any())
-        .ToDictionary(x => x.Key, x => x.Value);
-
-    if (responseFilesWithErrors.Any())
-    {
-      foreach (var error in responseFilesWithErrors)
-        foreach (var valueError in error.Value.Errors)
-        {
-          Debug.LogError($"{error.Key} Parse Error : {valueError}");
-        }
-    }
-
-    return responseFilesData.Select(x => x.Value).ToList();
-  }
-
-  Dictionary<string, string> GenerateAllAssetProjectParts()
-  {
-    Dictionary<string, StringBuilder> stringBuilders = new Dictionary<string, StringBuilder>();
-
-    foreach (string asset in m_AssemblyNameProvider.GetAllAssetPaths())
-    {
-      // Exclude files coming from packages except if they are internalized.
-      // TODO: We need assets from the assembly API
-      if (m_AssemblyNameProvider.IsInternalizedPackagePath(asset))
-      {
-        continue;
-      }
-
-      string extension = Path.GetExtension(asset);
-      if (IsSupportedExtension(extension) && ScriptingLanguage.None == ScriptingLanguageFor(extension))
-      {
-        // Find assembly the asset belongs to by adding script extension and using compilation pipeline.
-        var assemblyName = m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset);
-
-        if (string.IsNullOrEmpty(assemblyName))
-        {
-          continue;
-        }
-
-        assemblyName = Path.GetFileNameWithoutExtension(assemblyName);
-
-        if (!stringBuilders.TryGetValue(assemblyName, out var projectBuilder))
-        {
-          projectBuilder = new StringBuilder();
-          stringBuilders[assemblyName] = projectBuilder;
-        }
-
-        projectBuilder.Append("     <None Include=\"").Append(m_FileIOProvider.EscapedRelativePathFor(asset, ProjectDirectory)).Append("\" />").Append(k_WindowsNewline);
-      }
-    }
-
-    var result = new Dictionary<string, string>();
-
-    foreach (var entry in stringBuilders)
-      result[entry.Key] = entry.Value.ToString();
-
-    return result;
-  }
-
-  void SyncProject(
-      Assembly assembly,
-      Dictionary<string, string> allAssetsProjectParts,
-      List<ResponseFileData> responseFilesData)
-  {
-    SyncProjectFileIfNotChanged(ProjectFile(assembly), ProjectText(assembly, allAssetsProjectParts, responseFilesData));
-  }
-
-  void SyncProjectFileIfNotChanged(string path, string newContents)
-  {
-    if (Path.GetExtension(path) == ".csproj")
-    {
-      newContents = OnGeneratedCSProject(path, newContents);
-    }
-
-    SyncFileIfNotChanged(path, newContents);
-  }
-
-  void SyncSolutionFileIfNotChanged(string path, string newContents)
-  {
-    newContents = OnGeneratedSlnSolution(path, newContents);
-
-    SyncFileIfNotChanged(path, newContents);
-  }
-
-  void SyncFileIfNotChanged(string filename, string newContents)
-  {
-    try
-    {
-      if (m_FileIOProvider.Exists(filename) && newContents == m_FileIOProvider.ReadAllText(filename))
-      {
-        return;
-      }
-    }
-    catch (Exception exception)
-    {
-      Debug.LogException(exception);
-    }
-
-    m_FileIOProvider.WriteAllText(filename, newContents);
-  }
-
-  string ProjectText(
-      Assembly assembly,
-      Dictionary<string, string> allAssetsProjectParts,
-      List<ResponseFileData> responseFilesData)
-  {
-    var projectBuilder = new StringBuilder();
-    ProjectHeader(assembly, responseFilesData, projectBuilder);
-    var references = new List<string>();
-
-    foreach (string file in assembly.sourceFiles)
-    {
-      var fullFile = m_FileIOProvider.EscapedRelativePathFor(file, ProjectDirectory);
-      projectBuilder.Append("     <Compile Include=\"").Append(fullFile).Append("\" />").Append(k_WindowsNewline);
-    }
-
-    // Append additional non-script files that should be included in project generation.
-    if (allAssetsProjectParts.TryGetValue(assembly.name, out var additionalAssetsForProject))
-      projectBuilder.Append(additionalAssetsForProject);
-
-    var responseRefs = responseFilesData.SelectMany(x => x.FullPathReferences.Select(r => r));
-    var internalAssemblyReferences = assembly.assemblyReferences
-      .Where(i => !i.sourceFiles.Any(ShouldFileBePartOfSolution)).Select(i => i.outputPath);
-    var allReferences =
-      assembly.compiledAssemblyReferences
-        .Union(responseRefs)
-        .Union(references)
-        .Union(internalAssemblyReferences);
-
-    foreach (var reference in allReferences)
-    {
-      string fullReference = Path.IsPathRooted(reference) ? reference : Path.Combine(ProjectDirectory, reference);
-      AppendReference(fullReference, projectBuilder);
-    }
-
-    if (0 < assembly.assemblyReferences.Length)
-    {
-      projectBuilder.Append("  </ItemGroup>").Append(k_WindowsNewline);
-      projectBuilder.Append("  <ItemGroup>").Append(k_WindowsNewline);
-      foreach (Assembly reference in assembly.assemblyReferences.Where(i => i.sourceFiles.Any(ShouldFileBePartOfSolution)))
-      {
-        projectBuilder.Append("    <ProjectReference Include=\"").Append(reference.name).Append(GetProjectExtension()).Append("\">").Append(k_WindowsNewline);
-        projectBuilder.Append("      <Project>{").Append(ProjectGuid(reference.name)).Append("}</Project>").Append(k_WindowsNewline);
-        projectBuilder.Append("      <Name>").Append(reference.name).Append("</Name>").Append(k_WindowsNewline);
-        projectBuilder.Append("    </ProjectReference>").Append(k_WindowsNewline);
-      }
-    }
-
-    projectBuilder.Append(ProjectFooter());
-    return projectBuilder.ToString();
-  }
-
-  static void AppendReference(string fullReference, StringBuilder projectBuilder)
-  {
-    var escapedFullPath = SecurityElement.Escape(fullReference);
-    escapedFullPath = escapedFullPath.NormalizePath();
-    projectBuilder.Append("    <Reference Include=\"").Append(Path.GetFileNameWithoutExtension(escapedFullPath)).Append("\">").Append(k_WindowsNewline);
-    projectBuilder.Append("        <HintPath>").Append(escapedFullPath).Append("</HintPath>").Append(k_WindowsNewline);
-    projectBuilder.Append("    </Reference>").Append(k_WindowsNewline);
-  }
-
-  public string ProjectFile(Assembly assembly)
-  {
-    var fileBuilder = new StringBuilder(assembly.name);
-    fileBuilder.Append(".csproj");
-    return Path.Combine(ProjectDirectory, fileBuilder.ToString());
-  }
-
-  public string SolutionFile()
-  {
-    return Path.Combine(ProjectDirectory, $"{m_ProjectName}.sln");
-  }
-
-  private void ProjectHeader(
-      Assembly assembly,
-      List<ResponseFileData> responseFilesData,
-      StringBuilder builder
-  )
-  {
-    var otherArguments = GetOtherArgumentsFromResponseFilesData(responseFilesData);
-    GetProjectHeaderTemplate(
-        builder,
-        ProjectGuid(assembly.name),
-        assembly.name,
-        string.Join(";", new[] { "DEBUG", "TRACE" }.Concat(assembly.defines).Concat(responseFilesData.SelectMany(x => x.Defines)).Concat(EditorUserBuildSettings.activeScriptCompilationDefines).Distinct().ToArray()),
-        GenerateLangVersion(otherArguments["langversion"], assembly),
-        assembly.compilerOptions.AllowUnsafeCode | responseFilesData.Any(x => x.Unsafe),
-        GenerateAnalyserItemGroup(RetrieveRoslynAnalyzers(assembly, otherArguments)),
-        GenerateRoslynAnalyzerRulesetPath(assembly, otherArguments)
-    );
-  }
-
-  private static string GenerateLangVersion(IEnumerable<string> langVersionList, Assembly assembly)
-  {
-    var langVersion = langVersionList.FirstOrDefault();
-    if (!string.IsNullOrWhiteSpace(langVersion))
-      return langVersion;
 #if UNITY_2020_2_OR_NEWER
-    return assembly.compilerOptions.LanguageVersion;
-#else
-    return k_TargetLanguageVersion;
+			// Analyzers + ruleset provided by Unity
+			analyzers.AddRange(compilerOptions.RoslynAnalyzerDllPaths);
+			rulesetPath = compilerOptions.RoslynAnalyzerRulesetPath;
 #endif
-  }
 
-  private static string GenerateRoslynAnalyzerRulesetPath(Assembly assembly, ILookup<string, string> otherResponseFilesData)
-  {
+			// We have support in 2021.3, 2022.2 but without a backport in 2022.1
+#if UNITY_2021_3
+			// Unfortunately those properties were introduced in a patch release of 2021.3, so not found in 2021.3.2f1 for example
+			var scoType = compilerOptions.GetType();
+			var afpProperty = scoType.GetProperty("RoslynAdditionalFilePaths");
+			var acpProperty = scoType.GetProperty("AnalyzerConfigPath");
+			additionalFilePaths.AddRange(afpProperty?.GetValue(compilerOptions) as string[] ?? Array.Empty<string>());
+			analyzerConfigPath = acpProperty?.GetValue(compilerOptions) as string ?? analyzerConfigPath;
+#elif UNITY_2022_2_OR_NEWER
+			additionalFilePaths.AddRange(compilerOptions.RoslynAdditionalFilePaths);
+			analyzerConfigPath = compilerOptions.AnalyzerConfigPath;
+#endif
+
+			// Analyzers and additional files provided by csc.rsp
+			analyzers.AddRange(GetOtherArguments(responseFilesData, new HashSet<string>(new[] { "analyzer", "a" })));
+			additionalFilePaths.AddRange(GetOtherArguments(responseFilesData, new HashSet<string>(new[] { "additionalfile" })));
+
+			properties.RulesetPath = ToNormalizedPath(rulesetPath);
+			properties.Analyzers = ToNormalizedPaths(analyzers);
+			properties.AnalyzerConfigPath = ToNormalizedPath(analyzerConfigPath);
+			properties.AdditionalFilePaths = ToNormalizedPaths(additionalFilePaths);
+		}
+
+		private string ToNormalizedPath(string path)
+		{
+			return path
+				.MakeAbsolutePath()
+				.NormalizePathSeparators();
+		}
+
+		private string[] ToNormalizedPaths(IEnumerable<string> values)
+		{
+			return values
+				.Where(a => !string.IsNullOrEmpty(a))
+				.Select(a => ToNormalizedPath(a))
+				.Distinct()
+				.ToArray();
+		}
+
+		private void ProjectHeader(
+			Assembly assembly,
+			ResponseFileData[] responseFilesData,
+			out StringBuilder headerBuilder
+		)
+		{
+			var projectType = ProjectTypeOf(assembly.name);
+
+			var projectProperties = new ProjectProperties
+			{
+				ProjectGuid = ProjectGuid(assembly),
+				LangVersion = GetLangVersion(assembly),
+				AssemblyName = assembly.name,
+				RootNamespace = GetRootNamespace(assembly),
+				OutputPath = assembly.outputPath,
+				// RSP alterable
+				Defines = assembly.defines.Concat(responseFilesData.SelectMany(x => x.Defines)).Distinct().ToArray(),
+				Unsafe = assembly.compilerOptions.AllowUnsafeCode | responseFilesData.Any(x => x.Unsafe),
+				// VSTU Flavoring
+				FlavoringProjectType = projectType + ":" + (int)projectType,
+				FlavoringBuildTarget = EditorUserBuildSettings.activeBuildTarget + ":" + (int)EditorUserBuildSettings.activeBuildTarget,
+				FlavoringUnityVersion = Application.unityVersion,
+				FlavoringPackageVersion = "2.0.23",
+			};
+
+			SetAnalyzerAndSourceGeneratorProperties(assembly, responseFilesData, projectProperties);
+
+			GetProjectHeader(projectProperties, out headerBuilder);
+		}
+
+		private enum ProjectType
+		{
+			GamePlugins = 3,
+			Game = 1,
+			EditorPlugins = 7,
+			Editor = 5,
+		}
+
+		private static ProjectType ProjectTypeOf(string fileName)
+		{
+			var plugins = fileName.Contains("firstpass");
+			var editor = fileName.Contains("Editor");
+
+			if (plugins && editor)
+				return ProjectType.EditorPlugins;
+			if (plugins)
+				return ProjectType.GamePlugins;
+			if (editor)
+				return ProjectType.Editor;
+
+			return ProjectType.Game;
+		}
+
+		internal virtual void GetProjectHeader(ProjectProperties properties, out StringBuilder headerBuilder)
+		{
+			headerBuilder = default;
+		}
+
+		internal void GetProjectHeaderProperties(ProjectProperties properties, StringBuilder headerBuilder)
+		{
+			const string NoWarn = "0169;USG0001";
+
+			headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <NoWarn>").Append(NoWarn).Append("</NoWarn>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <DefineConstants>").Append(string.Join(";", properties.Defines)).Append(@"</DefineConstants>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <AllowUnsafeBlocks>").Append(properties.Unsafe).Append(@"</AllowUnsafeBlocks>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+		}
+
+		internal static void GetProjectHeaderAnalyzers(ProjectProperties properties, StringBuilder headerBuilder)
+		{
+			if (!string.IsNullOrEmpty(properties.RulesetPath))
+			{
+				headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+				headerBuilder.Append(@"    <CodeAnalysisRuleSet>").Append(properties.RulesetPath).Append(@"</CodeAnalysisRuleSet>").Append(k_WindowsNewline);
+				headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+			}
+
+			if (properties.Analyzers.Any())
+			{
+				headerBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+				foreach (var analyzer in properties.Analyzers)
+				{
+					headerBuilder.Append(@"    <Analyzer Include=""").Append(analyzer).Append(@""" />").Append(k_WindowsNewline);
+				}
+				headerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+			}
+
+			if (!string.IsNullOrEmpty(properties.AnalyzerConfigPath))
+			{
+				headerBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+				headerBuilder.Append(@"    <EditorConfigFiles Include=""").Append(properties.AnalyzerConfigPath).Append(@""" />").Append(k_WindowsNewline);
+				headerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+			}
+
+			if (properties.AdditionalFilePaths.Any())
+			{
+				headerBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+				foreach (var additionalFile in properties.AdditionalFilePaths)
+				{
+					headerBuilder.Append(@"    <AdditionalFiles Include=""").Append(additionalFile).Append(@""" />").Append(k_WindowsNewline);
+				}
+				headerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+			}
+		}
+
+		internal void GetProjectHeaderVstuFlavoring(ProjectProperties properties, StringBuilder headerBuilder, bool includeProjectTypeGuids = true)
+		{
+			// Flavoring
+			headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+
+			if (includeProjectTypeGuids)
+			{
+				headerBuilder.Append(@"    <ProjectTypeGuids>{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>").Append(k_WindowsNewline);
+			}
+
+			headerBuilder.Append(@"    <UnityProjectGenerator>Package</UnityProjectGenerator>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityProjectGeneratorVersion>").Append(properties.FlavoringPackageVersion).Append(@"</UnityProjectGeneratorVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityProjectGeneratorStyle>").Append(Style).Append("</UnityProjectGeneratorStyle>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityProjectType>").Append(properties.FlavoringProjectType).Append(@"</UnityProjectType>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityBuildTarget>").Append(properties.FlavoringBuildTarget).Append(@"</UnityBuildTarget>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityVersion>").Append(properties.FlavoringUnityVersion).Append(@"</UnityVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+		}
+
+		internal virtual void GetProjectFooter(StringBuilder footerBuilder)
+		{
+		}
+
+		private static string GetSolutionText()
+		{
+			return string.Join(k_WindowsNewline,
+			@"",
+			@"Microsoft Visual Studio Solution File, Format Version {0}",
+			@"# Visual Studio {1}",
+			@"{2}",
+			@"Global",
+			@"    GlobalSection(SolutionConfigurationPlatforms) = preSolution",
+			@"        Debug|Any CPU = Debug|Any CPU",
+			@"        Release|Any CPU = Release|Any CPU",
+			@"    EndGlobalSection",
+			@"    GlobalSection(ProjectConfigurationPlatforms) = postSolution",
+			@"{3}",
+			@"    EndGlobalSection",
+			@"{4}",
+			@"EndGlobal",
+			@"").Replace("    ", "\t");
+		}
+
+		private void SyncSolution(IEnumerable<Assembly> assemblies)
+		{
+			if (InvalidCharactersRegexPattern.IsMatch(ProjectDirectory))
+				Debug.LogWarning("Project path contains special characters, which can be an issue when opening Visual Studio");
+
+			var solutionFile = SolutionFile();
+			var previousSolution = File.Exists(solutionFile) ? SolutionParser.ParseSolutionFile(solutionFile) : null;
+			SyncSolutionFileIfNotChanged(solutionFile, SolutionText(assemblies, previousSolution));
+		}
+
+		private string SolutionText(IEnumerable<Assembly> assemblies, Solution previousSolution = null)
+		{
+			const string fileversion = "12.00";
+			const string vsversion = "15";
+
+			var relevantAssemblies = RelevantAssembliesForMode(assemblies);
+			var generatedProjects = ToProjectEntries(relevantAssemblies).ToList();
+
+			SolutionProperties[] properties = null;
+
+			// First, add all projects generated by Unity to the solution
+			var projects = new List<SolutionProjectEntry>();
+			projects.AddRange(generatedProjects);
+
+			if (previousSolution != null)
+			{
+				// Add all projects that were previously in the solution and that are not generated by Unity, nor generated in the project root directory
+				var externalProjects = previousSolution.Projects
+					.Where(p => p.IsSolutionFolderProjectFactory() || !FileUtility.IsFileInProjectRootDirectory(p.FileName))
+					.Where(p => generatedProjects.All(gp => gp.FileName != p.FileName));
+
+				projects.AddRange(externalProjects);
+				properties = previousSolution.Properties;
+			}
+
+			string propertiesText = GetPropertiesText(properties);
+			string projectEntriesText = GetProjectEntriesText(projects);
+
+			// do not generate configurations for SolutionFolders
+			var configurableProjects = projects.Where(p => !p.IsSolutionFolderProjectFactory());
+			string projectConfigurationsText = string.Join(k_WindowsNewline, configurableProjects.Select(p => GetProjectActiveConfigurations(p.ProjectGuid)).ToArray());
+
+			return string.Format(GetSolutionText(), fileversion, vsversion, projectEntriesText, projectConfigurationsText, propertiesText);
+		}
+
+		private static IEnumerable<Assembly> RelevantAssembliesForMode(IEnumerable<Assembly> assemblies)
+		{
+			return assemblies.Where(i => ScriptingLanguage.CSharp == ScriptingLanguageFor(i));
+		}
+
+		private static string GetPropertiesText(SolutionProperties[] array)
+		{
+			if (array == null || array.Length == 0)
+			{
+				// HideSolution by default
+				array = new[] {
+					new SolutionProperties() {
+						Name = "SolutionProperties",
+						Type = "preSolution",
+						Entries = new List<KeyValuePair<string,string>>() { new KeyValuePair<string, string> ("HideSolutionNode", "FALSE") }
+					}
+				};
+			}
+			var result = new StringBuilder();
+
+			for (var i = 0; i < array.Length; i++)
+			{
+				if (i > 0)
+					result.Append(k_WindowsNewline);
+
+				var properties = array[i];
+
+				result.Append($"\tGlobalSection({properties.Name}) = {properties.Type}");
+				result.Append(k_WindowsNewline);
+
+				foreach (var entry in properties.Entries)
+				{
+					result.Append($"\t\t{entry.Key} = {entry.Value}");
+					result.Append(k_WindowsNewline);
+				}
+
+				result.Append("\tEndGlobalSection");
+			}
+
+			return result.ToString();
+		}
+
+		/// <summary>
+		/// Get a Project("{guid}") = "MyProject", "MyProject.unityproj", "{projectguid}"
+		/// entry for each relevant language
+		/// </summary>
+		private string GetProjectEntriesText(IEnumerable<SolutionProjectEntry> entries)
+		{
+			var projectEntries = entries.Select(entry => string.Format(
+				m_SolutionProjectEntryTemplate,
+				entry.ProjectFactoryGuid, entry.Name, entry.FileName, entry.ProjectGuid, entry.Metadata
+			));
+
+			return string.Join(k_WindowsNewline, projectEntries.ToArray());
+		}
+
+		private IEnumerable<SolutionProjectEntry> ToProjectEntries(IEnumerable<Assembly> assemblies)
+		{
+			foreach (var assembly in assemblies)
+				yield return new SolutionProjectEntry()
+				{
+					ProjectFactoryGuid = SolutionGuid(assembly),
+					Name = assembly.name,
+					FileName = Path.GetFileName(ProjectFile(assembly)),
+					ProjectGuid = ProjectGuid(assembly),
+					Metadata = k_WindowsNewline
+				};
+		}
+
+		/// <summary>
+		/// Generate the active configuration string for a given project guid
+		/// </summary>
+		private string GetProjectActiveConfigurations(string projectGuid)
+		{
+			return string.Format(
+				m_SolutionProjectConfigurationTemplate,
+				projectGuid);
+		}
+
+		internal string EscapedRelativePathFor(string file, out UnityEditor.PackageManager.PackageInfo packageInfo)
+		{
+			var projectDir = ProjectDirectory.NormalizePathSeparators();
+			file = file.NormalizePathSeparators();
+			var path = SkipPathPrefix(file, projectDir);
+
+			packageInfo = m_AssemblyNameProvider.FindForAssetPath(path.NormalizeWindowsToUnix());
+			if (packageInfo != null)
+			{
+				// We have to normalize the path, because the PackageManagerRemapper assumes
+				// dir seperators will be os specific.
+				var absolutePath = Path.GetFullPath(path.NormalizePathSeparators());
+				path = SkipPathPrefix(absolutePath, projectDir);
+			}
+
+			return XmlFilename(path);
+		}
+
+		internal static string SkipPathPrefix(string path, string prefix)
+		{
+			if (path.StartsWith($"{prefix}{Path.DirectorySeparatorChar}") && (path.Length > prefix.Length))
+				return path.Substring(prefix.Length + 1);
+			return path;
+		}
+
+		internal static string GetProjectExtension()
+		{
+			return ".csproj";
+		}
+
+		internal string ProjectGuid(string assemblyName)
+		{
+			return m_GUIDGenerator.ProjectGuid(m_ProjectName, assemblyName);
+		}
+
+		internal string ProjectGuid(Assembly assembly)
+		{
+			return ProjectGuid(m_AssemblyNameProvider.GetAssemblyName(assembly.outputPath, assembly.name));
+		}
+
+		private string SolutionGuid(Assembly assembly)
+		{
+			return m_GUIDGenerator.SolutionGuid(m_ProjectName, ScriptingLanguageFor(assembly));
+		}
+
+		private static string GetRootNamespace(Assembly assembly)
+		{
 #if UNITY_2020_2_OR_NEWER
-    return GenerateAnalyserRuleSet(otherResponseFilesData["ruleset"].Append(assembly.compilerOptions.RoslynAnalyzerRulesetPath).Where(a => !string.IsNullOrEmpty(a)).Distinct().Select(x => MakeAbsolutePath(x).NormalizePath()).ToArray());
+			return assembly.rootNamespace;
 #else
-    return GenerateAnalyserRuleSet(otherResponseFilesData["ruleset"].Distinct().Select(x => MakeAbsolutePath(x).NormalizePath()).ToArray());
+			return EditorSettings.projectGenerationRootNamespace;
 #endif
-  }
+		}
+	}
 
-  private static string GenerateAnalyserRuleSet(string[] paths)
-  {
-    return paths.Length == 0
-        ? string.Empty
-        : $"{Environment.NewLine}{string.Join(Environment.NewLine, paths.Select(a => $"    <CodeAnalysisRuleSet>{a}</CodeAnalysisRuleSet>"))}";
-  }
+	public static class SolutionGuidGenerator
+	{
+		public static string GuidForProject(string projectName)
+		{
+			return ComputeGuidHashFor(projectName + "salt");
+		}
 
-  private static string MakeAbsolutePath(string path)
-  {
-    return Path.IsPathRooted(path) ? path : Path.GetFullPath(path);
-  }
+		public static string GuidForSolution(string projectName, ScriptingLanguage language)
+		{
+			if (language == ScriptingLanguage.CSharp)
+			{
+				// GUID for a C# class library: http://www.codeproject.com/Reference/720512/List-of-Visual-Studio-Project-Type-GUIDs
+				return "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC";
+			}
 
-  private static ILookup<string, string> GetOtherArgumentsFromResponseFilesData(List<ResponseFileData> responseFilesData)
-  {
-    var paths = responseFilesData.SelectMany(x =>
-        {
-          return x.OtherArguments.Where(a => a.StartsWith("/") || a.StartsWith("-"))
-                                         .Select(b =>
-                  {
-                    var index = b.IndexOf(":", StringComparison.Ordinal);
-                    if (index > 0 && b.Length > index)
-                    {
-                      var key = b.Substring(1, index - 1);
-                      return new KeyValuePair<string, string>(key, b.Substring(index + 1));
-                    }
+			return ComputeGuidHashFor(projectName);
+		}
 
-                    const string warnaserror = "warnaserror";
-                    return b.Substring(1).StartsWith(warnaserror)
-                                ? new KeyValuePair<string, string>(warnaserror, b.Substring(warnaserror.Length + 1))
-                                : default;
-                  });
-        })
-      .Distinct()
-      .ToLookup(o => o.Key, pair => pair.Value);
-    return paths;
-  }
+		private static string ComputeGuidHashFor(string input)
+		{
+			var hash = MD5.Create().ComputeHash(Encoding.Default.GetBytes(input));
+			return HashAsGuid(HashToString(hash));
+		}
 
-  string[] RetrieveRoslynAnalyzers(Assembly assembly, ILookup<string, string> otherArguments)
-  {
-#if UNITY_2020_2_OR_NEWER
-    return otherArguments["analyzer"].Concat(otherArguments["a"])
-        .SelectMany(x => x.Split(';'))
-#if !ROSLYN_ANALYZER_FIX
-                .Concat(m_AssemblyNameProvider.GetRoslynAnalyzerPaths())
-#else
-        .Concat(assembly.compilerOptions.RoslynAnalyzerDllPaths)
-#endif
-                .Select(MakeAbsolutePath)
-        .Distinct()
-        .ToArray();
-#else
-    return otherArguments["analyzer"].Concat(otherArguments["a"])
-      .SelectMany(x => x.Split(';'))
-      .Distinct()
-      .Select(MakeAbsolutePath)
-      .ToArray();
-#endif
-  }
+		private static string HashAsGuid(string hash)
+		{
+			var guid = hash.Substring(0, 8) + "-" + hash.Substring(8, 4) + "-" + hash.Substring(12, 4) + "-" + hash.Substring(16, 4) + "-" + hash.Substring(20, 12);
+			return guid.ToUpper();
+		}
 
-  static string GenerateAnalyserItemGroup(string[] paths)
-  {
-    //   <ItemGroup>
-    //      <Analyzer Include="..\packages\Comments_analyser.1.0.6626.21356\analyzers\dotnet\cs\Comments_analyser.dll" />
-    //      <Analyzer Include="..\packages\UnityEngineAnalyzer.1.0.0.0\analyzers\dotnet\cs\UnityEngineAnalyzer.dll" />
-    //  </ItemGroup>
-    if (paths.Length == 0)
-    {
-      return string.Empty;
-    }
-
-    var analyserBuilder = new StringBuilder();
-    analyserBuilder.Append("  <ItemGroup>").Append(k_WindowsNewline);
-    foreach (var path in paths)
-    {
-      analyserBuilder.Append($"    <Analyzer Include=\"{path.NormalizePath()}\" />").Append(k_WindowsNewline);
-    }
-
-    analyserBuilder.Append("  </ItemGroup>").Append(k_WindowsNewline);
-    return analyserBuilder.ToString();
-  }
-
-  static string GetSolutionText()
-  {
-    return string.Join("\r\n", @"", @"Microsoft Visual Studio Solution File, Format Version {0}", @"# Visual Studio {1}", @"{2}", @"Global", @"    GlobalSection(SolutionConfigurationPlatforms) = preSolution", @"        Debug|Any CPU = Debug|Any CPU", @"    EndGlobalSection", @"    GlobalSection(ProjectConfigurationPlatforms) = postSolution", @"{3}", @"    EndGlobalSection", @"    GlobalSection(SolutionProperties) = preSolution", @"        HideSolutionNode = FALSE", @"    EndGlobalSection", @"EndGlobal", @"").Replace("    ", "\t");
-  }
-
-  static string GetProjectFooterTemplate()
-  {
-    return string.Join("\r\n", @"  </ItemGroup>", @"  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />", @"  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.", @"       Other similar extension points exist, see Microsoft.Common.targets.", @"  <Target Name=""BeforeBuild"">", @"  </Target>", @"  <Target Name=""AfterBuild"">", @"  </Target>", @"  -->", @"</Project>", @"");
-  }
-
-  static void GetProjectHeaderTemplate(
-      StringBuilder builder,
-      string assemblyGUID,
-      string assemblyName,
-      string defines,
-      string langVersion,
-      bool allowUnsafe,
-      string analyzerBlock,
-      string rulesetBlock
-  )
-  {
-    builder.Append(@"<?xml version=""1.0"" encoding=""utf-8""?>").Append(k_WindowsNewline);
-    builder.Append(@"<Project ToolsVersion=""").Append(k_ToolsVersion).Append(@""" DefaultTargets=""Build"" xmlns=""").Append(MSBuildNamespaceUri).Append(@""">").Append(k_WindowsNewline);
-    builder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
-    builder.Append(@"    <LangVersion>").Append(langVersion).Append("</LangVersion>").Append(k_WindowsNewline);
-    builder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-    builder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
-    builder.Append(@"    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>").Append(k_WindowsNewline);
-    builder.Append(@"    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>").Append(k_WindowsNewline);
-    builder.Append(@"    <ProductVersion>").Append(k_ProductVersion).Append("</ProductVersion>").Append(k_WindowsNewline);
-    builder.Append(@"    <SchemaVersion>2.0</SchemaVersion>").Append(k_WindowsNewline);
-    builder.Append(@"    <RootNamespace>").Append(EditorSettings.projectGenerationRootNamespace).Append("</RootNamespace>").Append(k_WindowsNewline);
-    builder.Append(@"    <ProjectGuid>{").Append(assemblyGUID).Append("}</ProjectGuid>").Append(k_WindowsNewline);
-    builder.Append(@"    <OutputType>Library</OutputType>").Append(k_WindowsNewline);
-    builder.Append(@"    <AppDesignerFolder>Properties</AppDesignerFolder>").Append(k_WindowsNewline);
-    builder.Append(@"    <AssemblyName>").Append(assemblyName).Append("</AssemblyName>").Append(k_WindowsNewline);
-    builder.Append(@"    <TargetFrameworkVersion>").Append(k_TargetFrameworkVersion).Append("</TargetFrameworkVersion>").Append(k_WindowsNewline);
-    builder.Append(@"    <FileAlignment>512</FileAlignment>").Append(k_WindowsNewline);
-    builder.Append(@"    <BaseDirectory>").Append(k_BaseDirectory).Append("</BaseDirectory>").Append(k_WindowsNewline);
-    builder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-    builder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">").Append(k_WindowsNewline);
-    builder.Append(@"    <DebugSymbols>true</DebugSymbols>").Append(k_WindowsNewline);
-    builder.Append(@"    <DebugType>full</DebugType>").Append(k_WindowsNewline);
-    builder.Append(@"    <Optimize>false</Optimize>").Append(k_WindowsNewline);
-    builder.Append(@"    <OutputPath>Temp\bin\Debug\</OutputPath>").Append(k_WindowsNewline);
-    builder.Append(@"    <DefineConstants>").Append(defines).Append("</DefineConstants>").Append(k_WindowsNewline);
-    builder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
-    builder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
-    builder.Append(@"    <NoWarn>0169</NoWarn>").Append(k_WindowsNewline);
-    builder.Append(@"    <AllowUnsafeBlocks>").Append(allowUnsafe).Append("</AllowUnsafeBlocks>").Append(k_WindowsNewline);
-    builder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-    builder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
-    builder.Append(@"    <NoConfig>true</NoConfig>").Append(k_WindowsNewline);
-    builder.Append(@"    <NoStdLib>true</NoStdLib>").Append(k_WindowsNewline);
-    builder.Append(@"    <AddAdditionalExplicitAssemblyReferences>false</AddAdditionalExplicitAssemblyReferences>").Append(k_WindowsNewline);
-    builder.Append(@"    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>").Append(k_WindowsNewline);
-    builder.Append(@"    <ImplicitlyExpandDesignTimeFacades>false</ImplicitlyExpandDesignTimeFacades>").Append(k_WindowsNewline);
-    builder.Append(rulesetBlock);
-    builder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-    builder.Append(analyzerBlock);
-    builder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
-  }
-
-  void SyncSolution(IEnumerable<Assembly> assemblies)
-  {
-    SyncSolutionFileIfNotChanged(SolutionFile(), SolutionText(assemblies));
-  }
-
-  string SolutionText(IEnumerable<Assembly> assemblies)
-  {
-    var fileversion = "11.00";
-    var vsversion = "2010";
-
-    var relevantAssemblies = RelevantAssembliesForMode(assemblies);
-    string projectEntries = GetProjectEntries(relevantAssemblies);
-    string projectConfigurations = string.Join(k_WindowsNewline, relevantAssemblies.Select(i => GetProjectActiveConfigurations(ProjectGuid(i.name))).ToArray());
-    return string.Format(GetSolutionText(), fileversion, vsversion, projectEntries, projectConfigurations);
-  }
-
-  static IEnumerable<Assembly> RelevantAssembliesForMode(IEnumerable<Assembly> assemblies)
-  {
-    return assemblies.Where(i => ScriptingLanguage.CSharp == ScriptingLanguageFor(i));
-  }
-
-  /// <summary>
-  /// Get a Project("{guid}") = "MyProject", "MyProject.csproj", "{projectguid}"
-  /// entry for each relevant language
-  /// </summary>
-  string GetProjectEntries(IEnumerable<Assembly> assemblies)
-  {
-    var projectEntries = assemblies.Select(i => string.Format(
-        m_SolutionProjectEntryTemplate,
-        SolutionGuid(i),
-        i.name,
-        Path.GetFileName(ProjectFile(i)),
-        ProjectGuid(i.name)
-    ));
-
-    return string.Join(k_WindowsNewline, projectEntries.ToArray());
-  }
-
-  /// <summary>
-  /// Generate the active configuration string for a given project guid
-  /// </summary>
-  string GetProjectActiveConfigurations(string projectGuid)
-  {
-    return string.Format(
-        m_SolutionProjectConfigurationTemplate,
-        projectGuid);
-  }
-
-  static string SkipPathPrefix(string path, string prefix)
-  {
-    if (path.StartsWith($@"{prefix}{Path.DirectorySeparatorChar}"))
-      return path.Substring(prefix.Length + 1);
-    return path;
-  }
-
-  string ProjectGuid(string assembly)
-  {
-    return m_GUIDProvider.ProjectGuid(m_ProjectName, assembly);
-  }
-
-  string SolutionGuid(Assembly assembly)
-  {
-    return m_GUIDProvider.SolutionGuid(m_ProjectName, GetExtensionOfSourceFiles(assembly.sourceFiles));
-  }
-
-  static string ProjectFooter()
-  {
-    return GetProjectFooterTemplate();
-  }
-
-  static string GetProjectExtension()
-  {
-    return ".csproj";
-  }
-
-  void WriteVSCodeSettingsFiles()
-  {
-    var vsCodeDirectory = Path.Combine(ProjectDirectory, ".vscode");
-
-    if (!m_FileIOProvider.Exists(vsCodeDirectory))
-      m_FileIOProvider.CreateDirectory(vsCodeDirectory);
-
-    var vsCodeSettingsJson = Path.Combine(vsCodeDirectory, "settings.json");
-
-    if (!m_FileIOProvider.Exists(vsCodeSettingsJson))
-      m_FileIOProvider.WriteAllText(vsCodeSettingsJson, k_SettingsJson);
-  }
-}
-
-public static class SolutionGuidGenerator
-{
-  static MD5 mD5 = MD5CryptoServiceProvider.Create();
-
-  public static string GuidForProject(string projectName)
-  {
-    return ComputeGuidHashFor(projectName + "salt");
-  }
-
-  public static string GuidForSolution(string projectName, string sourceFileExtension)
-  {
-    return "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC";
-  }
-
-  static string ComputeGuidHashFor(string input)
-  {
-    var hash = mD5.ComputeHash(Encoding.Default.GetBytes(input));
-    return new Guid(hash).ToString();
-  }
+		private static string HashToString(byte[] bs)
+		{
+			var sb = new StringBuilder();
+			foreach (byte b in bs)
+				sb.Append(b.ToString("x2"));
+			return sb.ToString();
+		}
+	}
 }
