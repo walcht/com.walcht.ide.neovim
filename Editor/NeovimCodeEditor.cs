@@ -6,7 +6,6 @@ using UnityEditor;
 using UnityEngine;
 using Unity.CodeEditor;
 using Debug = UnityEngine.Debug;
-using Microsoft.Unity.VisualStudio.Editor;
 
 
 namespace Neovim.Editor
@@ -22,28 +21,6 @@ namespace Neovim.Editor
       private readonly string m_ServerSocketPath = "/tmp/nvimsocket";
 
       private IGenerator m_Generator = null;
-
- #if UNITY_2019_4_OR_NEWER && !UNITY_2020
-		  [InitializeOnLoadMethod]
-		  static void LegacyVisualStudioCodePackageDisabler()
-		  {
-		  	// disable legacy Visual Studio Code packages
-		  	var editor = CodeEditor.Editor.GetCodeEditorForPath("code.cmd");
-		  	if (editor == null)
-		  		return;
-
-		  	if (editor is VisualStudioEditor)
-		  		return;
-
-		  	// only disable the com.unity.ide.vscode package
-		  	var assembly = editor.GetType().Assembly;
-		  	var assemblyName = assembly.GetName().Name;
-		  	if (assemblyName != "Unity.VSCode.Editor")
-		  		return;
-
-		  	CodeEditor.Unregister(editor);
-		  }
-#endif
 
       // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
       static NeovimCodeEditor()
