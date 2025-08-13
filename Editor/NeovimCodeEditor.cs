@@ -1,3 +1,5 @@
+// uncomment for debugging messages
+// #define DEBUG
 using System;
 using System.IO;
 using System.Linq;
@@ -15,6 +17,16 @@ namespace Neovim.Editor
   {
       static readonly string[] _supportedFileNames = { "nvim" };
 
+#if UNITY_EDITOR_LINUX
+      private enum LinuxDesktopEnvironment {
+        GNOME,
+        KDE,
+        OTHER,
+        UNKNOWN,
+      }
+      private static readonly LinuxDesktopEnvironment s_LinuxPlatform;
+#endif
+
       // add your Neovim installation path here
       // TODO: only use this if "nvim" command isn't already available in PATH
       private string[] m_PossiblePaths = { "/usr/bin/nvim", "/opt/nvim-linux64/bin/nvim" };
@@ -25,16 +37,112 @@ namespace Neovim.Editor
       // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
       static NeovimCodeEditor()
       {
+#if UNITY_EDITOR_LINUX
+          s_LinuxPlatform = DetermineLinuxDesktopEnvironment();
+          if (s_LinuxPlatform == LinuxDesktopEnvironment.GNOME)
+          {
+            RunShellCmd(@"
+UUID=activate-window-by-title@lucaswerkmeister.de
+if ! gnome-extensions list | grep --quiet $UUID; then
+  busctl --user call org.gnome.Shell.Extensions /org/gnome/Shell/Extensions org.gnome.Shell.Extensions InstallRemoteExtension s $UUID
+fi
+", timeout: 10000);
+          }
+#endif
           NeovimCodeEditor editor = new NeovimCodeEditor(GeneratorFactory.GetInstance(GeneratorStyle.SDK));
           CodeEditor.Register(editor);
           editor.CreateIfDoesntExist();
+
       }
 
       public void CreateIfDoesntExist()
       {
         m_Generator.Sync();
       }
-  
+
+    
+#if UNITY_EDITOR_LINUX
+      private static LinuxDesktopEnvironment DetermineLinuxDesktopEnvironment()
+      {
+        string val = Environment.GetEnvironmentVariable("XDG_DATA_DIRS");
+        if (val != null)
+        {
+          if (val.Contains("gnome", StringComparison.OrdinalIgnoreCase))
+          {
+            return LinuxDesktopEnvironment.GNOME;
+          }
+          else 
+          {
+            return LinuxDesktopEnvironment.OTHER;
+          }
+        }
+        return LinuxDesktopEnvironment.UNKNOWN;
+      }
+
+      private static bool RunShellCmd(string cmd, int timeout = 500)
+      {
+        bool success = false;
+        string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
+        try
+        {
+          using (Process p = new ())
+          {
+            p.StartInfo.FileName = "/bin/bash";
+            p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
+            p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            p.StartInfo.CreateNoWindow = true;
+            p.StartInfo.UseShellExecute = false;
+            p.Start();
+            if (!p.WaitForExit(timeout))
+            {
+              success = false;
+            } else
+            {
+              success = (p.ExitCode == 0);
+            }
+          }
+        }
+        catch (Exception)
+        {
+          success = false;
+        }
+        return success;
+      }
+#endif
+
+      private static bool RunProcess(string app, string args, ProcessWindowStyle winStyle,
+          bool createNoWindow = false, int timeout = 500)
+      {
+        bool success = false;
+        try
+        {
+          using (Process p = new ())
+          {
+            p.StartInfo.FileName = app;
+            p.StartInfo.Arguments = args;
+            p.StartInfo.WindowStyle = winStyle;
+            p.StartInfo.CreateNoWindow = createNoWindow;
+            p.StartInfo.UseShellExecute = false;
+            p.Start();
+            if (!p.WaitForExit(timeout))
+            {
+              success = false;
+            } else
+            {
+              success = (p.ExitCode == 0);
+            }
+          }
+        }
+        catch (Exception)
+        {
+          success = false;
+        }
+        return success;
+      }
+
+
+#if UNITY_EDITOR_LINUX
+#endif
   
       private CodeEditor.Installation[] m_Installations = null;
       public CodeEditor.Installation[] Installations
@@ -181,7 +289,7 @@ namespace Neovim.Editor
       // list of changes.
       public void SyncAll()
       {
-          // AssetDatabase.Refresh();
+          AssetDatabase.Refresh();
           m_Generator.Sync();
       }
   
@@ -198,68 +306,85 @@ namespace Neovim.Editor
           // if this exists then a Neovim server instance already exists
           if (!File.Exists(m_ServerSocketPath))
           {
-              try
-              {
-                  string term = "gnome-terminal";
-                  string args = $"--title \"nvimunity\" -- {app} {filePath} --listen {m_ServerSocketPath}";
-  
-                  using (Process serverProc = new Process())
-                  {
-                      serverProc.StartInfo.FileName = term;
-                      serverProc.StartInfo.Arguments = args;
-                      serverProc.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
-                      serverProc.StartInfo.CreateNoWindow = false;
-                      serverProc.StartInfo.UseShellExecute = false;
-                      serverProc.Start();
-                      if (!serverProc.WaitForExit(500))
-                      {
-  #if DEBUG
-                          Debug.LogError("[neovim.ide] failed at creating a Neovim server instance");
-  #endif
-                          return false;
-                      }
-                  }
-              }
-              catch (Exception e)
-              {
-  #if DEBUG
-                  Debug.LogError($"[neovim.ide] failed at creating a Neovim server instance: {e.Message}");
-  #endif
-                  return false;
-              }
+#if DEBUG
+            Debug.Log($"launching new Neovim instance server instance ...");
+#endif
+            if (!RunProcess("gnome-terminal", $"--title \"nvimunity\" -- {app} {filePath} --listen {m_ServerSocketPath}",
+                  ProcessWindowStyle.Normal))
+            {
+#if DEBUG
+              Debug.LogError($"[neovim.ide] failed at creating a Neovim server instance.");
+#endif
+              return false;
+            }
           }
-  
-          string arguments = $"--server {m_ServerSocketPath} --remote-tab {filePath} --remote-send \":call cursor({line},{column})<CR>\"";
-  
-          try
+
+#if DEBUG
+          Debug.Log($"[neovim.ide] sending request to Neovim server instance at: {m_ServerSocketPath} to open file at: {filePath} ...");
+#endif
+          if (!RunProcess(app, $"--server {m_ServerSocketPath} --remote-tab {filePath}",
+                ProcessWindowStyle.Hidden, createNoWindow: true))
           {
-              using (Process proc = new Process())
-              {
-                  proc.StartInfo.FileName = app;
-                  proc.StartInfo.Arguments = arguments;
-                  proc.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-                  proc.StartInfo.CreateNoWindow = true;
-                  proc.StartInfo.UseShellExecute = true;
-                  proc.Start();
-                  if (!proc.WaitForExit(500))
-                  {
-  #if DEBUG
-                      Debug.LogError($"[neovim.ide] failed at sending request to open {filePath} to Neovim server instance " +
-                          $"listening to {m_ServerSocketPath}");
-  #endif
-                      return false;
-                  }
-              }
-          }
-          catch (Exception e)
-          {
-  #if DEBUG
-              Debug.LogError($"[neovim.ide] failed at sending request to open {filePath} to Neovim server instance " +
-                  $"listening to {m_ServerSocketPath}. Reason: {e.Message}");
-  #endif
+#if DEBUG
+              Debug.LogError($"[neovim.ide] failed at sending a request to Neovim server instance to open file.");
+#endif
               return false;
           }
-  
+
+
+          // you cannot do both --remote-tab and --remote-send at the same time (I have no idea why.
+          // You can do them together in a terminal but through C#, nope).
+#if DEBUG
+          Debug.Log($"[neovim.ide] sending request to Neovim to jump to position: cursor position: line={line} column={column}");
+#endif
+          if (!RunProcess(app, $"--server {m_ServerSocketPath} --remote-send \':call cursor({line},{column})<CR>\'",
+                ProcessWindowStyle.Hidden, createNoWindow: true))
+          {
+            // it's fine if we fail here - we are just jumping to a line and cursor position
+#if DEBUG
+            Debug.LogWarning($"[neovim.ide] failed at sending request to jump to cursor position.");
+#endif
+          }
+
+          // optionally focus on Neovim - this is very tricky to implement cross platform
+#if UNITY_EDITOR_WIN
+          // TODO: add support for Windows to switch to Neovim window
+#elif UNITY_EDITOR_LINUX
+#if DEBUG
+          Debug.Log($"[neovim.ide] focusing on Neovim server instance window on {s_LinuxPlatform} ...");
+#endif
+          switch (s_LinuxPlatform)
+          {
+            case LinuxDesktopEnvironment.GNOME:
+              {
+                string cmd = @"gdbus call --session \
+    --dest org.gnome.Shell \
+    --object-path /de/lucaswerkmeister/ActivateWindowByTitle \
+    --method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring \
+    'nvimunity'";
+                if (!RunShellCmd(cmd))
+                {
+#if DEBUG
+                  Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+                      + "Did you logout and login of your GNOME session?");
+#endif
+                }
+              }
+              break;
+            case LinuxDesktopEnvironment.KDE:
+              {
+                // TODO: add support for switching focus to Neovim on KDE
+              }
+              break;
+            default:
+              {
+                // TODO: add support for switching focus to Neovim on other Linux desktop environments
+              }
+              break;
+          }
+#elif UNITY_EDITOR_OSX
+          // TODO: add support for MacOS to switch to Neovim window
+#endif
           return true;
       }
   

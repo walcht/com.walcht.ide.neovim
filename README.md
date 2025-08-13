@@ -1,15 +1,25 @@
 # About
 
 Neovim integration with the Unity game engine. Inspired from the official Visual
-Studio editor IDE package: [com.unity.ide.visualstudio](https://github.com/needle-mirror/com.unity.ide.visualstudio).
+Studio editor IDE package: [com.unity.ide.visualstudio][com.unity.ide.visualstudio].
 
 ## Installation
 
 In the Unity Editor, in the top menu bar navigate to:
 
 Window -> Package Management -> Package Manager -> navigate to plus sign on top left ->
-Install package from git URL... -> paste ```https://github.com/walcht/com.walcht.ide.neovim.git```
--> install
+Install package from git URL... -> paste `https://github.com/walcht/com.walcht.ide.neovim.git` -> install
+
+### Optional Dependencies for Neovim Window Focus
+
+On Windows, no additional dependencies are needed to switch focus to Neovim window.
+
+On GNOME desktop environments (Ubuntu, Debian, Fedora, etc.), upon starting opening
+a C# script from Unity for the first time, you will be prompted to install the
+[activate-window-by-title][activate-window-by-title] gnome-extension. You have to
+logout then login for the extension to be fully installed. This extension
+is crucial for focusing on a window instance based on title on GNOME desktop
+environments.
 
 ## Usage
 
@@ -27,3 +37,6 @@ LSP functionalities for those selected packages):
 ## License
 
 MIT License. Read `license.txt` file.
+
+[com.unity.ide.visualstudio]: https://github.com/needle-mirror/com.unity.ide.visualstudio
+[activate-window-by-title]: https://github.com/lucaswerkmeister/activate-window-by-title
