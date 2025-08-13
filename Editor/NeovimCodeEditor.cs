@@ -28,7 +28,6 @@ namespace Neovim.Editor
 #endif
 
       // add your Neovim installation path here
-      // TODO: only use this if "nvim" command isn't already available in PATH
       private string[] m_PossiblePaths = { "/usr/bin/nvim", "/opt/nvim-linux64/bin/nvim" };
       private readonly string m_ServerSocketPath = "/tmp/nvimsocket";
 
