@@ -40,8 +40,7 @@ Edit -> Preferences -> External Tools -> Set "External Script Editor" to Neovim
 -> Adjust which packages to generate the .csproj files for (you will only get
 LSP functionalities for those selected packages):
 
-![Unity's external tools menu][unity-external-tools-menu]
-
+<img width="521" height="258" alt="Unity's external tools menu" src="https://github.com/user-attachments/assets/42bc9118-8e38-4991-8c3d-036fb6b303bc" />
 
 ## TODOs
 
