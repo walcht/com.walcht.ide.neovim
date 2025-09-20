@@ -42,6 +42,30 @@ LSP functionalities for those selected packages):
 
 <img width="521" height="258" alt="Unity's external tools menu" src="https://github.com/user-attachments/assets/42bc9118-8e38-4991-8c3d-036fb6b303bc" />
 
+## Change Terminal Emulator Launch Command
+
+On Linux, this package tries to find a default terminal emulator from a small
+list of *most-common* terminals (e.g., gnome-terminal, alacritty, etc.). Of
+course, if you want to supply by yourself which terminal emulator launch command
+to use for launching a new Neovim server instance then you can do so via the
+top menu option in the Unity Editor: `Neovim -> Change Terminal Launch Cmd` which
+will show the following popup:
+
+<img width="609" height="176" alt="image" src="https://github.com/user-attachments/assets/469f5bc6-b4a8-43f0-8885-d49c914935d6" />
+
+- `{app}` -- will be replaced by your neovim path. Please keep this as it is in
+  your launch command.
+- `{filePath}` -- will be replaced by the path to the file that will be opened
+  by Neovim. Please keep this as it is in your launch command.
+- `{serverSocketPath}` -- will be replaced by the path to the IPC socket between
+  the Neovim server instance and the client that will send commands. On Linux, this
+  is repalce by default to `/tmp/nvimsocket`. Please keep this as it is in your
+  launch command.
+- `--title "nvimunity"` -- this instructs gnome-terminal to name the newly opened
+  window as `nvimunity`. This is crucial for focusing on the Neovim server instance
+  when opening a file from Unity. Change this according to your terminal emulator
+  but keep the new window name as `nvimunity`.
+
 ## TODOs
 
 - [ ] add Windows support (CRUCIAL)
