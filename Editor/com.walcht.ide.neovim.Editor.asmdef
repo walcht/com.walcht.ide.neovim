@@ -1,0 +1,14 @@
+{
+  "name": "walcht.ide.neovim.Editor",
+  "rootNamespace": "Neovim.Editor",
+  "references": [],
+  "optionalUnityReferences": [],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": true,
+  "noEngineReferences": false,
+  "precompiledReferences": []
+}
