@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Threading;
-using Debug = UnityEngine.Debug;
 
 namespace Neovim.Editor
 {
@@ -11,6 +10,7 @@ namespace Neovim.Editor
     public static bool RunProcess(string app, string args, ProcessWindowStyle winStyle, bool createNoWindow = false,
     bool useShellExecute = false)
     {
+      bool success = false;
       try
       {
         using (Process p = new())
@@ -22,19 +22,20 @@ namespace Neovim.Editor
           p.StartInfo.UseShellExecute = useShellExecute;
 
           p.Start();
-          return true;
+
+          success = true;
         }
       }
-      catch (Exception)
-      {
-        return false;
-      }
+      catch (Exception) { }
+      return success;
     }
 
 
+    /// runs process (usually some shell cmd) and exits (i.e., gets killed) almost immediately
+    /// (after at most 50ms) this is mainly used to avoid cross-platform issues where, for
+    /// instance, on Windows a call to WaitForExit(timeout) may not behave in an expected way.
     public static void RunProcessAndExitImmediately(string app, string args)
     {
-      Debug.Log(app + " " + args);
       try
       {
         using (Process p = new())
@@ -53,14 +54,13 @@ namespace Neovim.Editor
           p.Kill();
         }
       }
-      catch (Exception e) { }
+      catch (Exception) { }
     }
 
 
     public static bool RunShellCmd(string cmd, int timeout = 500)
     {
       bool success = false;
-        Debug.Log(cmd);
       try
       {
         using (Process p = new())
@@ -88,6 +88,7 @@ namespace Neovim.Editor
       return success;
     }
 
+    /// runs `which` cmd on Linux or `where.exe` on Windows.
     public static bool CheckCmdExistence(string cmd, int timeout = 200)
     {
       bool success = false;
