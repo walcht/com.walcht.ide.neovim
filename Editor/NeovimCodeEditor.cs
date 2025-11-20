@@ -77,11 +77,12 @@ namespace Neovim.Editor
        "nvim",
        "/usr/bin/nvim",
        "/opt/nvim-linux64/bin/nvim",
+       "/opt/nvim-linux-x86_64/bin/nvim",
      };
 #else // UNITY_EDITOR_WIN
      // make sure to include the extension in the executalbe's name!
      {
-       "nvim.exe",  // just to be safe - powershell bitches about missing .exe extension
+       "nvim.exe",  // powershell bitches about missing .exe extension
        Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Path.Join("Neovim", "bin", "nvim.exe")),
      };
 #endif
@@ -105,6 +106,12 @@ namespace Neovim.Editor
           return;
         }
       }
+
+#if UNITY_EDITOR_WIN
+      // on Windows - executable paths usually contain whitespace (C:\Program Files), make sure to put the path between string quotes
+      s_NvimExecutable = $"\"{s_NvimExecutable}\"";
+#endif
+
       // get terminal launch cmd and its args from Unity editor preferences
       string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
       string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
@@ -143,10 +150,6 @@ fi
       }
 #else
       // TODO: add auto Window focus on Windows platforms
-      // on Windows, listening to a domain socket yields the following error:
-      // "neovim Failed to --listen: service not available for socket type"
-      // so we have to listen to a TCP socket instead with a local addr and
-      // a random port - this will be overwitten below
       s_WindowFocusingAvailable = false;
 #endif
 
@@ -208,7 +211,7 @@ fi
       (string cmd, string args) = termLaunch;
 
       if (s_NvimExecutable != null)
-        cmd = cmd.Replace("{app}", $"\"{s_NvimExecutable}\"");
+        cmd = cmd.Replace("{app}", s_NvimExecutable);
 
       if (!ProcessUtils.CheckCmdExistence(cmd))
         return false;
@@ -366,7 +369,40 @@ fi
     }
 
 
+    public bool IsNvimServerInstanceAlreadyRunning()
+    {
+#if UNITY_EDITOR_LINUX
+      // On Linux, since we use domain sockets, we can rely on the existence of the socket to know whether there
+      // is an already running nvim server instance
+      return File.Exists(s_ServerSocket);
+#else
+      // this is tricky... using PIDs did not work... domain sockets have an issue on the side of NeoVim...
+      // since on Windows we use a randomly available port for the TCP NeoVim server socket, we can know
+      // whether a NeoVim server instance is running by trying to bind a TCP listener to the previously used
+      // port
+      string prevAddr = EditorPrefs.GetString("NvimPrevServerSocket");
+      if (String.IsNullOrWhiteSpace(prevAddr)) return false;
+
+      int idx = prevAddr.IndexOf(':');
+      IPAddress ip = IPAddress.Parse(prevAddr.Substring(0, idx));
+      int port = int(prevAddr.Substring(idx + 1));
+      try
+      {
+        TcpListener list = new(ip, port);
+        list.Start();
+      }
+      catch(SocketException)
+      {
+        return true;
+      }
+      return false;
+#endif
+    }
+
+
     // The external code editor needs to handle the request to open a file.
+    // Note that by returning 'false' Unity will try to open the file in a different program which is
+    // the reason why, for instance, we return 'false' for image files
     public bool OpenProject(string filePath = "", int line = -1, int column = -1)
     {
       if (!String.IsNullOrWhiteSpace(filePath) && !File.Exists(filePath)) return false;
@@ -379,21 +415,7 @@ fi
       // without this check)
       if (!Array.Exists(s_SupportedExtensions, e => e.ToLower() == Path.GetExtension(filePath).TrimStart('.').ToLower())) return false;
 
-      // relying on the existance of a created neovim serer socket instance is not a good approach (not crossplatform,
-      // issues, etc.) what we do instead is to store the PID of the create neovim server instance in EditorPrefs then
-      // check whether we have a process of that ID
-      int prevNvimServerPID = EditorPrefs.GetInt("NvimPrevServerPID", defaultValue: -1);
-      Process nvimUnityProcess = null;
-      try
-      {
-        nvimUnityProcess = Process.GetProcessById(prevNvimServerPID);
-      }
-      catch (ArgumentException) { }
-
-      if (
-        prevNvimServerPID == -1  // no previous nvim server process was created
-        || nvimUnityProcess == null  // or, no matching PID was found
-      )
+      if (!IsNvimServerInstanceAlreadyRunning())
       {
         // get terminal launch cmd and its args from Unity editor preferences
         string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
@@ -409,7 +431,6 @@ fi
         // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
         // available for socket type" so we have to listen to a TCP socket instead with a local addr and a random port
         s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
-        EditorPrefs.SetString("NvimPrevServerSocket", s_ServerSocket);
 #endif
 
         try
@@ -417,24 +438,21 @@ fi
           using (Process p = new())
           {
             p.StartInfo.FileName = termLaunchCmd
-              .Replace("{app}", $"\"{s_NvimExecutable}\"");
+              .Replace("{app}", s_NvimExecutable);
             p.StartInfo.Arguments = termLaunchArgs
-              .Replace("{app}", $"\"{s_NvimExecutable}\"")
+              .Replace("{app}", s_NvimExecutable)
               .Replace("{filePath}", $"\"{filePath}\"")
-              .Replace("{serverSocketPath}", $"\"{s_ServerSocket}\"");
+              .Replace("{serverSocketPath}", s_ServerSocket);
             p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
             p.StartInfo.CreateNoWindow = false;
-            p.StartInfo.UseShellExecute = true;  // has to be true on Windows
+            p.StartInfo.UseShellExecute = true;  // has to be true on Windows (irrelevant on Linux)
 
             // start and do not care (do not wait for exit)
             p.Start();
 
-            p.EnableRaisingEvents = true;
-            p.Exited += new EventHandler(OnNvimServerInstanceExit);
-
-            // save the PID so that in case the user exits Unity while keeping nvim open we can re-communicate with that
-            // same nvim server instance
-            EditorPrefs.SetInt("NvimPrevServerPID", p.Id);
+#if UNITY_EDITOR_WIN
+            EditorPrefs.SetString("NvimPrevServerSocket", s_ServerSocket);
+#endif
           }
         }
         catch (Exception e)
@@ -445,16 +463,41 @@ fi
       }
 
 #if UNITY_EDITOR_WIN
+      // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not available for socket type"
+      // so we have to listen to a TCP socket instead with a local addr and a random port - this will be overwitten below
       s_ServerSocket = EditorPrefs.GetString("NvimPrevServerSocket");
 #endif
 
       // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding to the provided filepath
-      ProcessUtils.RunProcessAndExitImmediately($"\"{s_NvimExecutable}\"", $"--server \"{s_ServerSocket}\" --remote-tab \"{filePath}\"");
+      {
+        string cmd = s_NvimExecutable;
+        string args = $"--server {s_ServerSocket} --remote-tab \"{filePath}\"";
+        try
+        {
+          ProcessUtils.RunProcessAndKillAfter(cmd, args);
+        } catch (Exception e)
+        {
+          Debug.LogWarning($"[neovim.ide] failed at opening a remote tab. cmd: {cmd} {args}. Reason: {e.Message}");
+        }
+      }
 
-      // you cannot do both --remote-tab and --remote-send at the same time (I have no idea why. You can do them together in a terminal but not through C# :-|).
-      ProcessUtils.RunProcessAndExitImmediately($"\"{s_NvimExecutable}\"", $"--server \"{s_ServerSocket}\" --remote-send \":call cursor({line},{column})<CR>\"");
+      // now send request to jump cursor to exact position. You cannot do both --remote-tab and --remote-send at the same time (I have no idea why.
+      // You can do them together in a terminal but not through C# :-|).
+      if (line != 1 || column != 0)
+      {
+        string cmd = s_NvimExecutable;
+        string args = $"--server {s_ServerSocket} --remote-send \":call cursor({line},{column})<CR>\"";
+        try
+        {
+          ProcessUtils.RunProcessAndKillAfter(cmd, args);
+        }
+        catch (Exception e)
+        {
+          Debug.LogWarning($"[neovim.ide] failed at jumping to cursor positions. cmd: {cmd} {args}. Reason: {e.Message}");
+        }
+      }
 
-      // optionally focus on Neovim - this is extremely tricky to implement across platform
+      // optionally focus on Neovim - this is extremely tricky to implement across platforms
       if (!s_WindowFocusingAvailable)
         return true;
 
@@ -497,12 +540,6 @@ fi
 #endif
 
       return true;
-    }
-
-    private void OnNvimServerInstanceExit(object sender, System.EventArgs e)
-    {
-      Debug.Log("unset");
-      EditorPrefs.DeleteKey("NvimPrevServerPID");
     }
   }
 }
