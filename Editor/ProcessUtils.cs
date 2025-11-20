@@ -1,104 +1,102 @@
 using System;
-using System.IO;
-using System.Linq;
 using System.Diagnostics;
+using System.Threading.Tasks;
+using System.Threading;
+using Debug = UnityEngine.Debug;
 
 namespace Neovim.Editor
 {
-  public static class ProcessUtils {
-      public static bool RunProcess(string app, string args, ProcessWindowStyle winStyle,
-          bool createNoWindow = false, int timeout = 500)
+  public static class ProcessUtils
+  {
+    /// this is mainly used to avoid cross-platform issues where, for instance, on Windows
+    /// a call to WaitForExit(timeout) may not behave in an expected way.
+    public static void RunProcessAndKillAfter(string app, string args, int timeout = 200)
+    {
+      using (Process p = new())
       {
-        bool success = false;
-        try
+        p.StartInfo.FileName = app;
+        p.StartInfo.Arguments = args;
+        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+        p.StartInfo.CreateNoWindow = true;
+        p.StartInfo.UseShellExecute = false;
+
+        p.Start();
+
+        if (!p.WaitForExit(timeout))
         {
-          using (Process p = new ())
-          {
-            p.StartInfo.FileName = app;
-            p.StartInfo.Arguments = args;
-            p.StartInfo.WindowStyle = winStyle;
-            p.StartInfo.CreateNoWindow = createNoWindow;
-            p.StartInfo.UseShellExecute = false;
-            p.Start();
-            if (!p.WaitForExit(timeout))
-            {
-              // had to do this because some cmds (e.g., alacritty) don't detach
-              // the created child process
-              success = true;
-            } else
-            {
-              success = (p.ExitCode == 0);
-            }
-          }
+          p.Kill();
         }
-        catch (Exception)
-        {
-          success = false;
-        }
-        return success;
       }
+    }
 
 
+    public static bool RunShellCmd(string cmd, int timeout = 200)
+    {
+      bool success = false;
+      try
+      {
+        using (Process p = new())
+        {
 #if UNITY_EDITOR_LINUX
-      public static bool RunShellCmd(string cmd, int timeout = 500)
-      {
-        bool success = false;
-        string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
-        try
-        {
-          using (Process p = new ())
-          {
-            p.StartInfo.FileName = Environment.GetEnvironmentVariable("SHELL");
-            p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
-            p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            p.StartInfo.CreateNoWindow = true;
-            p.StartInfo.UseShellExecute = false;
-            p.Start();
-            if (!p.WaitForExit(timeout))
-            {
-              success = false;
-            } else
-            {
-              success = (p.ExitCode == 0);
-            }
-          }
-        }
-        catch (Exception)
-        {
-          success = false;
-        }
-        return success;
-      }
-
-      public static bool CheckCmdExistence(string cmd, int timeout = 200)
-      {
-        bool success = false;
-        try
-        {
-          using (Process p = new ())
-          {
-            p.StartInfo.FileName = "which";
-            p.StartInfo.Arguments = cmd;
-            p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            p.StartInfo.CreateNoWindow = true;
-            p.StartInfo.UseShellExecute = false;
-            p.Start();
-            if (!p.WaitForExit(timeout))
-            {
-              success = false;
-            } else
-            {
-              // which returns 0 if the supplied cmd was found
-              success = (p.ExitCode == 0);
-            }
-          }
-        }
-        catch (Exception)
-        {
-          success = false;
-        }
-        return success;
-      }
+          string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
+          p.StartInfo.FileName = Environment.GetEnvironmentVariable("SHELL");
+          p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
+#else // UNITY_EDITOR_WIN
+          p.StartInfo.FileName = "cmd.exe";
+          p.StartInfo.Arguments = $"/C \"{cmd}\"";
 #endif
+          p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+          p.StartInfo.CreateNoWindow = true;
+          p.StartInfo.UseShellExecute = false;
+
+          p.Start();
+
+          if (p.WaitForExit(timeout))
+          {
+            success = p.ExitCode == 0;
+          }
+          else
+          {
+            p.Kill();
+          }
+        }
+      }
+      catch (Exception) { }
+      return success;
+    }
+
+    /// runs `which` cmd on Linux or `where.exe` on Windows.
+    public static bool CheckCmdExistence(string cmd, int timeout = 200)
+    {
+      bool success = false;
+      try
+      {
+        using (Process p = new())
+        {
+#if UNITY_EDITOR_LINUX
+          p.StartInfo.FileName = "which";
+#else  // UNITY_EDITOR_WIN
+          // the 'which' cmd equivalent in Windows is 'where.exe'
+          p.StartInfo.FileName = "where.exe";
+#endif
+          p.StartInfo.Arguments = cmd;
+          p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+          p.StartInfo.CreateNoWindow = true;
+          p.StartInfo.UseShellExecute = false;
+          p.Start();
+          if (p.WaitForExit(timeout))
+          {
+            // which/where.exe returns 0 if the supplied cmd was found
+            success = p.ExitCode == 0;
+          }
+          else
+          {
+            p.Kill();
+          }
+        }
+      }
+      catch (Exception) { }
+      return success;
+    }
   }
 }

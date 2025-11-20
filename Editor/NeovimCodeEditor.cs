@@ -1,3 +1,4 @@
+#if UNITY_EDITOR_WIN || UNITY_EDITOR_LINUX // no support for MacOS yet...
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,26 +8,37 @@ using UnityEditor;
 using UnityEngine;
 using Unity.CodeEditor;
 using Debug = UnityEngine.Debug;
+using System.Threading.Tasks;
+#if UNITY_EDITOR_WIN
+using System.Net;
+using System.Net.Sockets;
+#endif
 
 
 namespace Neovim.Editor
 {
-
-  [Serializable]
-  public class NeovimConfig
-  {
-#if UNITY_EDITOR_LINUX
-    // the default launch cmd to use for launching a new Neovim instance
-    // a GUI can overwrite this -- e.g., user enters a custom launch cmd)
-    public string termLaunchCmd = null;
-#endif
-  }
-
   [InitializeOnLoad]
   public class NeovimCodeEditor : IExternalCodeEditor
   {
-    static readonly string[] _supportedFileNames = { "nvim" };
+    static readonly string[] _supportedFileNames = { "nvim", "nvim.exe" };
     static readonly bool s_WindowFocusingAvailable = false;
+    static string s_ServerSocket = "/tmp/nvimsocket";
+    static readonly string[] s_SupportedExtensions = {
+      // csharp
+      "cs",
+      "csproj",
+      "sln",
+      // python
+      "py",
+      // shader files
+      "shader",
+      "cginc",
+      // misc
+      "txt",
+      "json",
+      "yaml",
+      "xml",
+    };
 
 #if UNITY_EDITOR_LINUX
     private enum LinuxDesktopEnvironment
@@ -38,37 +50,75 @@ namespace Neovim.Editor
       UNKNOWN,  // can't be determined :/
     }
     private static readonly LinuxDesktopEnvironment s_LinuxPlatform;
+#endif
 
     // terminal launch command template - use this template for adding new launch cmds
-    public static readonly string s_TermLaunchCmdTemplate = "<terminal-emulator> --title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}";
+    public static readonly (string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}");
 
     // list of neovim launch cmds from popular terminal emulators - this is
     // just a hardcoded list so that non-tech-savy users can just get to
     // using Neovim with minimal friction.
-    public static readonly List<string> s_TermLaunchCmds = new List<string>{
-        "alacritty --title \"nvimunity\" --command {app} {filePath} --listen {serverSocketPath}",
-        "gnome-terminal --title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}",
-        "ptyxis --title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}",
-        "xterm -T \"nvimunity\" -e {app} {filePath} --listen {serverSocketPath}",
-      };
-
-    private static NeovimConfig s_Config = new();
-    public static string GetDefaultTermLaunchCmd() => s_Config.termLaunchCmd;
-
-    public static readonly string s_ConfigPath = $"{Environment.GetEnvironmentVariable("HOME")}/.config/com.walcht.ide.neovim.json";
-
-    // Neovim installation paths on Linux here
-    private string[] m_PossiblePaths = { "/usr/bin/nvim", "/opt/nvim-linux64/bin/nvim" };
-
-    // the location to create the server socket at
-    private readonly string m_ServerSocketPath = "/tmp/nvimsocket";
+    public static readonly (string, string)[] s_TermLaunchCmds =
+#if UNITY_EDITOR_LINUX
+    {
+        ("gnome-terminal", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}"),
+        ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocketPath}"),
+        ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}"),
+        ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocketPath}"),
+    };
+#else
+    {
+        ("{app}", "{filePath} --listen {serverSocketPath}"),  // run nvim.exe directly
+        ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocketPath}"),
+    };
 #endif
+
+    // Neovim installation paths on Linux here - the first valid path is picked otherwise the ENV variable TODO is
+    // checked
+    private static readonly string[] m_PossiblePaths =
+#if UNITY_EDITOR_LINUX
+     {
+       "nvim",
+       "/usr/bin/nvim",
+       "/opt/nvim-linux64/bin/nvim",
+       "/opt/nvim-linux-x86_64/bin/nvim",
+     };
+#else // UNITY_EDITOR_WIN
+     // make sure to include the extension in the executalbe's name!
+     {
+       "nvim.exe",  // powershell bitches about missing .exe extension
+       Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Path.Join("Neovim", "bin", "nvim.exe")),
+     };
+#endif
+
+    private static string s_NvimExecutable = null;
 
     private IGenerator m_Generator = null;
 
     // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
     static NeovimCodeEditor()
     {
+      if (s_NvimExecutable == null)
+      {
+        try
+        {
+          s_NvimExecutable = m_PossiblePaths.First(path => File.Exists(path) || ProcessUtils.CheckCmdExistence($"\"{path}\""));
+        }
+        catch (InvalidOperationException)
+        {
+          Debug.LogError("[neovim.ide] failed to find a valid nvim executable");
+          return;
+        }
+      }
+
+#if UNITY_EDITOR_WIN
+      // on Windows - executable paths usually contain whitespace (C:\Program Files), make sure to put the path between string quotes
+      s_NvimExecutable = $"\"{s_NvimExecutable}\"";
+#endif
+
+      // get terminal launch cmd and its args from Unity editor preferences
+      string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
+      string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
 #if UNITY_EDITOR_LINUX
       s_LinuxPlatform = DetermineLinuxDesktopEnvironment();
       if (s_LinuxPlatform == LinuxDesktopEnvironment.X11)
@@ -102,38 +152,37 @@ fi
           s_WindowFocusingAvailable = true;
         }
       }
+#else
+      // TODO: add auto Window focus on Windows platforms
+      s_WindowFocusingAvailable = false;
+#endif
 
-      // if there is already a config file - get terminal launch cmd from there
-      if (s_Config.termLaunchCmd == null && File.Exists(s_ConfigPath))
+      // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
+      if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
       {
-        string termLaunchCmd = JsonUtility.FromJson<NeovimConfig>(File.ReadAllText(s_ConfigPath)).termLaunchCmd;
-        ChangeTermLaunchCmd(termLaunchCmd);
-      }
-      // otherwise - use the `most common` terminal emulators list
-      else if (s_Config.termLaunchCmd == null)
-      {
-        // pick the first default available terminal from the list of 'popular'
-        // terminal emulators. Obviously this is some sort of a heuristic but
-        // the user can explicitly change this through the GUI.
-        foreach (string termLaunchCmd in s_TermLaunchCmds)
+        // pick the first default available terminal from the list of 'popular' terminal emulators. Obviously this is
+        // some sort of a heuristic but the user can explicitly change this through the GUI.
+        bool s = false;
+        foreach (var termLaunch in s_TermLaunchCmds)
         {
-          ChangeTermLaunchCmd(termLaunchCmd);
-          if (s_Config.termLaunchCmd != null)
+          if (TryChangeTermLaunchCmd(termLaunch))
+          {
+            s = true;
             break;
+          }
         }
         // no available terminal is found from the 'most common' term list
-        if (s_Config.termLaunchCmd == null)
+        if (!s)
         {
           // you can't show a GUI window here -- so just log a warning
           Debug.LogWarning("[neovim.ide] no terminal emulator is found. Please provide your own launch command by going to: "
               + "Neovim => ChangeTerminalLaunchCmd");
         }
       }
-#endif
+
       NeovimCodeEditor editor = new(GeneratorFactory.GetInstance(GeneratorStyle.SDK));
       CodeEditor.Register(editor);
       editor.CreateIfDoesntExist();
-
     }
 
     public void CreateIfDoesntExist()
@@ -159,19 +208,22 @@ fi
       }
       return LinuxDesktopEnvironment.UNKNOWN;
     }
+#endif
 
-
-    public static bool ChangeTermLaunchCmd(string termLaunchCmd)
+    public static bool TryChangeTermLaunchCmd((string, string) termLaunch)
     {
-      if (String.IsNullOrWhiteSpace(termLaunchCmd) || !ProcessUtils.CheckCmdExistence(termLaunchCmd.Substring(0, termLaunchCmd.IndexOf(' '))))
+      (string cmd, string args) = termLaunch;
+
+      if (s_NvimExecutable != null)
+        cmd = cmd.Replace("{app}", s_NvimExecutable);
+
+      if (!ProcessUtils.CheckCmdExistence(cmd))
         return false;
 
-      s_Config.termLaunchCmd = termLaunchCmd;
-      // and serialize to the config path
-      File.WriteAllText(s_ConfigPath, JsonUtility.ToJson(s_Config, prettyPrint: true));
+      EditorPrefs.SetString("NvimUnityTermLaunchCmd", cmd);
+      EditorPrefs.SetString("NvimUnityTermLaunchArgs", args);
       return true;
     }
-#endif
 
     private CodeEditor.Installation[] m_Installations = null;
     public CodeEditor.Installation[] Installations
@@ -181,13 +233,12 @@ fi
         if (m_Installations != null) return m_Installations;
         try
         {
-          string path = m_PossiblePaths.First(path => new FileInfo(path).Exists);
           m_Installations = new CodeEditor.Installation[]
           {
             new CodeEditor.Installation
             {
               Name = "Neovim",
-              Path = path
+              Path = s_NvimExecutable
             }
           };
         }
@@ -322,66 +373,139 @@ fi
     }
 
 
+    public bool IsNvimServerInstanceAlreadyRunning()
+    {
+#if UNITY_EDITOR_LINUX
+      // On Linux, since we use domain sockets, we can rely on the existence of the socket to know whether there
+      // is an already running nvim server instance
+      return File.Exists(s_ServerSocket);
+#else
+      // this is tricky... using PIDs did not work... domain sockets have an issue on the side of NeoVim...
+      // since on Windows we use a randomly available port for the TCP NeoVim server socket, we can know
+      // whether a NeoVim server instance is running by trying to bind a TCP listener to the previously used
+      // port
+      string prevAddr = EditorPrefs.GetString("NvimPrevServerSocket");
+      if (String.IsNullOrWhiteSpace(prevAddr)) return false;
+
+      int idx = prevAddr.IndexOf(':');
+      IPAddress ip = IPAddress.Parse(prevAddr.Substring(0, idx));
+      int port = Int32.Parse(prevAddr.Substring(idx + 1));
+      try
+      {
+        TcpListener list = new(ip, port);
+        list.Start();
+      }
+      catch(SocketException)
+      {
+        return true;
+      }
+      return false;
+#endif
+    }
+
+
     // The external code editor needs to handle the request to open a file.
+    // Note that by returning 'false' Unity will try to open the file in a different program which is
+    // the reason why, for instance, we return 'false' for image files
     public bool OpenProject(string filePath = "", int line = -1, int column = -1)
     {
-      if (filePath != "" && !File.Exists(filePath)) return false;
+      if (!String.IsNullOrWhiteSpace(filePath) && !File.Exists(filePath)) return false;
       if (line == -1) line = 1;
       if (column == -1) column = 0;
 
-      string app = EditorPrefs.GetString("kScriptsDefaultApp");
+      if (s_NvimExecutable == null) return false;
 
-      // if this exists then a Neovim server instance already exists
-      if (!File.Exists(m_ServerSocketPath))
+      // only use NeoVim for reasonable file extensions (e.g., do not use NeoVim to open .png files which happens
+      // without this check)
+      if (!Array.Exists(s_SupportedExtensions, e => e.ToLower() == Path.GetExtension(filePath).TrimStart('.').ToLower())) return false;
+
+      if (!IsNvimServerInstanceAlreadyRunning())
       {
-#if UNITY_EDITOR_WIN
-        // TODO: add support for Windows to launch a new neovim instance
-#elif UNITY_EDITOR_LINUX
-        if (s_Config.termLaunchCmd == null)
+        // get terminal launch cmd and its args from Unity editor preferences
+        string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
+        string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
+        if (String.IsNullOrWhiteSpace(termLaunchCmd) || String.IsNullOrWhiteSpace(termLaunchArgs))
         {
           Debug.LogError($"[neovim.ide] no valid terminal launcher is available. " +
               "You have to set the terminal launch command by going to the menu item: Neovim => ChangeTerminalLaunchCmd");
           return false;
         }
-        int spaceIdx = s_Config.termLaunchCmd.IndexOf(' ');
-        string cmd = s_Config.termLaunchCmd.Substring(0, spaceIdx);
-        string args = string.Format(s_Config.termLaunchCmd.Substring(spaceIdx + 1)
-            .Replace("{app}", "{0}")
-            .Replace("{filePath}", "{1}")
-            .Replace("{serverSocketPath}", "{2}"), app, filePath, m_ServerSocketPath);
-        if (!ProcessUtils.RunProcess(cmd, args, ProcessWindowStyle.Normal))
+
+#if UNITY_EDITOR_WIN
+        // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
+        // available for socket type" so we have to listen to a TCP socket instead with a local addr and a random port
+        s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
+#endif
+
+        try
         {
-          Debug.LogError($"[neovim.ide] failed at creating a Neovim server instance.");
+          using (Process p = new())
+          {
+            p.StartInfo.FileName = termLaunchCmd
+              .Replace("{app}", s_NvimExecutable);
+            p.StartInfo.Arguments = termLaunchArgs
+              .Replace("{app}", s_NvimExecutable)
+              .Replace("{filePath}", $"\"{filePath}\"")
+              .Replace("{serverSocketPath}", s_ServerSocket);
+            p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
+            p.StartInfo.CreateNoWindow = false;
+            p.StartInfo.UseShellExecute = true;  // has to be true on Windows (irrelevant on Linux)
+
+            // start and do not care (do not wait for exit)
+            p.Start();
+
+#if UNITY_EDITOR_WIN
+            EditorPrefs.SetString("NvimPrevServerSocket", s_ServerSocket);
+#endif
+          }
+        }
+        catch (Exception e)
+        {
+          Debug.LogError($"[neovim.ide] failed to create a Neovim server instance. Reason: {e}");
           return false;
         }
+      }
+
+#if UNITY_EDITOR_WIN
+      // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not available for socket type"
+      // so we have to listen to a TCP socket instead with a local addr and a random port - this will be overwitten below
+      s_ServerSocket = EditorPrefs.GetString("NvimPrevServerSocket");
 #endif
-      }
 
-      // send request to Neovim server instance listening on the provided socket path to
-      // open a tab/buffer corresponding to the provided filepath
-      if (!ProcessUtils.RunProcess(app, $"--server {m_ServerSocketPath} --remote-tab {filePath}",
-            ProcessWindowStyle.Hidden, createNoWindow: true))
+      // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding to the provided filepath
       {
-        Debug.LogError($"[neovim.ide] failed at sending a request to Neovim server instance to open file.");
-        return false;
+        string cmd = s_NvimExecutable;
+        string args = $"--server {s_ServerSocket} --remote-tab \"{filePath}\"";
+        try
+        {
+          ProcessUtils.RunProcessAndKillAfter(cmd, args);
+        } catch (Exception e)
+        {
+          Debug.LogWarning($"[neovim.ide] failed at opening a remote tab. cmd: {cmd} {args}. Reason: {e.Message}");
+        }
       }
 
-
-      // you cannot do both --remote-tab and --remote-send at the same time (I have no idea why.
+      // now send request to jump cursor to exact position. You cannot do both --remote-tab and --remote-send at the same time (I have no idea why.
       // You can do them together in a terminal but not through C# :-|).
-      if (!ProcessUtils.RunProcess(app, $"--server {m_ServerSocketPath} --remote-send \':call cursor({line},{column})<CR>\'",
-            ProcessWindowStyle.Hidden, createNoWindow: true))
+      if (line != 1 || column != 0)
       {
-        // it's fine if we fail here - we are just jumping to a line and cursor position
-        Debug.LogWarning($"[neovim.ide] failed at sending request to jump to cursor position.");
+        string cmd = s_NvimExecutable;
+        string args = $"--server {s_ServerSocket} --remote-send \":call cursor({line},{column})<CR>\"";
+        try
+        {
+          ProcessUtils.RunProcessAndKillAfter(cmd, args);
+        }
+        catch (Exception e)
+        {
+          Debug.LogWarning($"[neovim.ide] failed at jumping to cursor positions. cmd: {cmd} {args}. Reason: {e.Message}");
+        }
       }
 
-      // optionally focus on Neovim - this is extremely tricky to implement across platform
+      // optionally focus on Neovim - this is extremely tricky to implement across platforms
       if (!s_WindowFocusingAvailable)
         return true;
-#if UNITY_EDITOR_WIN
-      // TODO: add support for Windows to switch to Neovim window
-#elif UNITY_EDITOR_LINUX
+
+#if UNITY_EDITOR_LINUX
       switch (s_LinuxPlatform)
       {
         case LinuxDesktopEnvironment.X11:
@@ -396,6 +520,7 @@ fi
           }
         case LinuxDesktopEnvironment.GNOME:
           {
+            // a clusterfuck of a mess - TODO: learn gdbus and clean this shit up somehow
             string cmd = @"gdbus call --session --dest org.gnome.Shell \
 --object-path /de/lucaswerkmeister/ActivateWindowByTitle \
 --method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring 'nvimunity'";
@@ -416,10 +541,10 @@ fi
           // do nothing - too complicated to make it work on all desktop environments :/
           break;
       }
-#elif UNITY_EDITOR_OSX
-      // TODO: add support for MacOS to switch to Neovim window
 #endif
+
       return true;
     }
   }
 }
+#endif

@@ -1,8 +1,8 @@
+#if UNITY_EDITOR_LINUX || UNITY_EDITOR_WIN
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
 
-#if UNITY_EDITOR_LINUX
 namespace Neovim.Editor
 {
   public class NeovimTerminalLaunchCmd : EditorWindow
@@ -25,18 +25,23 @@ namespace Neovim.Editor
       // CreateGUI is called when the EditorWindow's rootVisualElement is ready to be populated.
       private void CreateGUI()
       {
-          string currentTermLaunchCmd = NeovimCodeEditor.GetDefaultTermLaunchCmd();
+          string currentTermLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
+          string currentTermLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
 
           var label = new Label();
 
           var termLaunchCmdField = new TextField();
+          var termLaunchArgsField = new TextField();
 
           if (currentTermLaunchCmd == null) {
-            termLaunchCmdField.value = NeovimCodeEditor.s_TermLaunchCmdTemplate;
-            label.text = "Enter custom terminal launch command:";
+            (string templateCmd, string templateArgs) = NeovimCodeEditor.s_TermLaunchCmdTemplate;
+            termLaunchCmdField.value = templateCmd;
+            termLaunchArgsField.value = templateArgs;
+            label.text = "Enter custom terminal launch cmd & args:";
           } else {
             termLaunchCmdField.value = currentTermLaunchCmd;
-            label.text = "Current terminal launch command:";
+            termLaunchArgsField.value = currentTermLaunchArgs;
+            label.text = "Current terminal launch cmd & args:";
           }
 
           var msgField = new TextField();
@@ -48,16 +53,17 @@ namespace Neovim.Editor
           msgField.verticalScrollerVisibility = ScrollerVisibility.AlwaysVisible;
 
           var updateBtn = new Button() { text = "Update" };
-          updateBtn.clicked += () => OnAddTermLaunchCmd(termLaunchCmdField, msgField);
+          updateBtn.clicked += () => OnAddTermLaunchCmd(termLaunchCmdField, termLaunchArgsField, msgField);
 
           rootVisualElement.Add(label);
           rootVisualElement.Add(termLaunchCmdField);
+          rootVisualElement.Add(termLaunchArgsField);
           rootVisualElement.Add(updateBtn);
           rootVisualElement.Add(msgField);
       }
 
-      private void OnAddTermLaunchCmd(TextField termLaunchCmd, TextField msgField) {
-        if (!NeovimCodeEditor.ChangeTermLaunchCmd(termLaunchCmd.value)) {
+      private void OnAddTermLaunchCmd(TextField termLaunchCmd, TextField termLaunchArgs, TextField msgField) {
+        if (!NeovimCodeEditor.TryChangeTermLaunchCmd((termLaunchCmd.value, termLaunchArgs.value))) {
           msgField.value = "[ERROR] provided terminal is not available\n"
             + $"[ERROR] 'which {termLaunchCmd.value}' returned !=0 value\n";
           return;
