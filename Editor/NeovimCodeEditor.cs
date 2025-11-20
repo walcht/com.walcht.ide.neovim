@@ -9,6 +9,10 @@ using UnityEngine;
 using Unity.CodeEditor;
 using Debug = UnityEngine.Debug;
 using System.Threading.Tasks;
+#if UNITY_EDITOR_WIN
+using System.Net;
+using System.Net.Sockets;
+#endif
 
 
 namespace Neovim.Editor
@@ -385,7 +389,7 @@ fi
 
       int idx = prevAddr.IndexOf(':');
       IPAddress ip = IPAddress.Parse(prevAddr.Substring(0, idx));
-      int port = int(prevAddr.Substring(idx + 1));
+      int port = Int32.Parse(prevAddr.Substring(idx + 1));
       try
       {
         TcpListener list = new(ip, port);
