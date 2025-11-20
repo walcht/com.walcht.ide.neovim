@@ -199,7 +199,6 @@ to the number of generated`.csproj` files.
 
 ## TODOs
 
-- [ ] add Windows support (CRUCIAL)
 - [ ] automatically refresh and sync Unity project when Neovim changes/adds assets (CRUCIAL)
 - [ ] add MacOS support (IMPORTANT)
 
