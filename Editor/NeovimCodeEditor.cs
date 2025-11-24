@@ -87,8 +87,6 @@ namespace Neovim.Editor
      };
 #endif
 
-    private static string s_NvimExecutable = null;
-
     private IGenerator m_Generator = null;
 
     // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
@@ -122,8 +120,6 @@ namespace Neovim.Editor
 
 #if UNITY_EDITOR_LINUX
       s_LinuxPlatform = DetermineLinuxDesktopEnvironment();
-
-      Debug.Log($"[neovim.ide] detected Linux desktop environment: {s_LinuxPlatform}");
 
       if (s_LinuxPlatform == LinuxDesktopEnvironment.X11)
       {
@@ -340,8 +336,6 @@ fi
       string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
       string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
 
-      Debug.Log($"[neovim.ide] terminal launch cmd and args: {termLaunchCmd} {termLaunchArgs}");
-
       // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
       if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
       {
@@ -371,8 +365,6 @@ fi
 #else // UNITY_EDITOR_WIN
       string app = $"\"{CodeEditor.CurrentEditorPath}\"";
 #endif
-
-      Debug.Log($"[neovim.ide] OpenProject - CodeEditor.CurrentEditorPath: {app}");
 
       // only use NeoVim for reasonable file extensions (e.g., do not use NeoVim to open .png files which happens
       // without this check)
