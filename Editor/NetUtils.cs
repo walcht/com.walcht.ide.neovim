@@ -14,5 +14,20 @@ namespace Neovim.Editor
                 return ((IPEndPoint)socket.LocalEndPoint).Port;
             }
         }
+
+        public static bool IsPortInUse(string ip, int port)
+        {
+          IPAddress _ip = IPAddress.Parse(ip);
+          try
+          {
+            TcpListener list = new(_ip, port);
+            list.Start();
+          }
+          catch(SocketException)
+          {
+            return true;
+          }
+          return false;
+        }
     }
 }
