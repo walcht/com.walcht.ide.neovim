@@ -87,6 +87,8 @@ namespace Neovim.Editor
      };
 #endif
 
+    private static string s_NvimExecutable = null;
+
     private IGenerator m_Generator = null;
 
     // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
