@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Collections.Generic;
 using Debug = UnityEngine.Debug;
 
 namespace Neovim.Editor
@@ -87,6 +88,55 @@ namespace Neovim.Editor
           if (p.WaitForExit(timeout))
           {
             // which/where.exe returns 0 if the supplied cmd was found
+            success = p.ExitCode == 0;
+          }
+          else
+          {
+            p.Kill();
+          }
+        }
+      }
+      catch (Exception) { }
+      return success;
+    }
+
+
+    /// runs cmd and gets its standard output
+    public static bool GetCmdStdOutput(string cmd, out List<string> lines, int max_nbr_lines = 1, int timeout = 500)
+    {
+      bool success = false;
+      lines = new(max_nbr_lines);
+      int lines_read = 0;
+      try
+      {
+        using (Process p = new())
+        {
+#if UNITY_EDITOR_LINUX
+          string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
+          p.StartInfo.FileName = Environment.GetEnvironmentVariable("SHELL");
+          p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
+#else // UNITY_EDITOR_WIN
+          p.StartInfo.FileName = "cmd.exe";
+          p.StartInfo.Arguments = $"/C {cmd}";
+#endif
+          p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+          p.StartInfo.CreateNoWindow = true;
+          p.StartInfo.UseShellExecute = false;
+          p.StartInfo.RedirectStandardOutput = true;
+
+          p.Start();
+      
+
+          if (p.WaitForExit(timeout))
+          {
+            string line = null;
+            while (lines_read < max_nbr_lines &&
+                ((line = p.StandardOutput.ReadLine()) != null) &&
+                !String.IsNullOrWhiteSpace(line))
+            {
+              lines.Add(line);
+              ++lines_read;
+            }
             success = p.ExitCode == 0;
           }
           else

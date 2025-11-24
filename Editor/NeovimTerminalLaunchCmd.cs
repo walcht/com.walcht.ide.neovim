@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
+using System.Linq;
 
 namespace Neovim.Editor
 {
@@ -9,7 +10,7 @@ namespace Neovim.Editor
   {
       public static void RequestTerminalLaunchCmdChange() {
           var window = EditorWindow.GetWindow<NeovimTerminalLaunchCmd>(true, "Neovim Terminal Launch Command");
-          window.position = new Rect(Screen.width / 2, Screen.height / 2, 600, 125);
+          window.position = new Rect(Screen.width / 2, Screen.height / 2, 600, 200);
           window.minSize = new Vector2(500, 125);
           window.ShowModalUtility();
       }
@@ -32,16 +33,19 @@ namespace Neovim.Editor
 
           var termLaunchCmdField = new TextField();
           var termLaunchArgsField = new TextField();
+          var termLaunchTemplates = new DropdownField(NeovimCodeEditor.s_TermLaunchCmds
+              .Select((cmdargs, _) => cmdargs.Item1).ToList(), 0);
+          termLaunchTemplates.SetValueWithoutNotify("select terminal launch template cmd & args");
+
+          label.text = "Enter custom terminal launch cmd & args (or choose template):";
 
           if (currentTermLaunchCmd == null) {
             (string templateCmd, string templateArgs) = NeovimCodeEditor.s_TermLaunchCmdTemplate;
             termLaunchCmdField.value = templateCmd;
             termLaunchArgsField.value = templateArgs;
-            label.text = "Enter custom terminal launch cmd & args:";
           } else {
             termLaunchCmdField.value = currentTermLaunchCmd;
             termLaunchArgsField.value = currentTermLaunchArgs;
-            label.text = "Current terminal launch cmd & args:";
           }
 
           var msgField = new TextField();
@@ -54,8 +58,16 @@ namespace Neovim.Editor
 
           var updateBtn = new Button() { text = "Update" };
           updateBtn.clicked += () => OnAddTermLaunchCmd(termLaunchCmdField, termLaunchArgsField, msgField);
+          termLaunchTemplates.RegisterValueChangedCallback(e => 
+          {
+              string cmd = e.newValue;
+              string args = NeovimCodeEditor.s_TermLaunchCmds.First(cmdargs => cmdargs.Item1 == cmd).Item2;
+              termLaunchCmdField.value = cmd;
+              termLaunchArgsField.value = args;
+          });
 
           rootVisualElement.Add(label);
+          rootVisualElement.Add(termLaunchTemplates);
           rootVisualElement.Add(termLaunchCmdField);
           rootVisualElement.Add(termLaunchArgsField);
           rootVisualElement.Add(updateBtn);
