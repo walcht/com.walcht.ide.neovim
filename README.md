@@ -44,27 +44,70 @@ LSP functionalities for those selected packages):
 
 ## Change Terminal Emulator Launch Command
 
-On Linux, this package tries to find a default terminal emulator from a small
+By default this package tries to find a default terminal emulator from a small
 list of *most-common* terminals (e.g., gnome-terminal, alacritty, etc.). Of
 course, if you want to supply by yourself which terminal emulator launch command
 to use for launching a new Neovim server instance then you can do so via the
 top menu option in the Unity Editor: `Neovim -> Change Terminal Launch Cmd` which
 will show the following popup:
 
-<img width="609" height="176" alt="image" src="https://github.com/user-attachments/assets/469f5bc6-b4a8-43f0-8885-d49c914935d6" />
+<img width="605" height="262" alt="image" src="https://github.com/user-attachments/assets/a3cb103a-2c11-4435-9f16-330671bdbcd7" />
 
-- `{app}` -- will be replaced by your neovim path. Please keep this as it is in
-  your launch command.
-- `{filePath}` -- will be replaced by the path to the file that will be opened
-  by Neovim. Please keep this as it is in your launch command.
-- `{serverSocketPath}` -- will be replaced by the path to the IPC socket between
+Where:
+- `{app}` -- is replaced by the current editor path (i.e., neovim path).
+- `{filePath}` -- is replaced by the path to the requested file to be opened by
+  Neovim.
+- `{serverSocket}` -- is replaced by the path to the IPC socket between
   the Neovim server instance and the client that will send commands. On Linux, this
-  is repalce by default to `/tmp/nvimsocket`. Please keep this as it is in your
-  launch command.
-- `--title "nvimunity"` -- this instructs gnome-terminal to name the newly opened
-  window as `nvimunity`. This is crucial for focusing on the Neovim server instance
-  when opening a file from Unity. Change this according to your terminal emulator
-  but keep the new window name as `nvimunity`.
+  is replaced by default to `/tmp/nvimsocket`. On Windows, this is replaced by
+  default to `127.0.0.1:<RANDOM-PORT>` (with <RANDOM-PORT> a randomly chosen
+  available port).
+
+On Linux, it is advised to set the window name using something like:
+`--title "nvimunity"`. this is important for auto window focusing on GNOME.
+This, for instance, instructs gnome-terminal to name the newly opened window as
+`nvimunity`. This is crucial for focusing on the Neovim server instance
+when opening a file from Unity. Change this according to your terminal emulator
+but keep the new window name as `nvimunity`.
+
+## Change Open-File Request Args
+
+By default this package uses `--server {serverSocket} --remote-tab {filePath}`
+as arguments for process execution when a request to open a file is instantiated
+(i.e., replaces args here: `{app} {args}` where `{app}` is the current editor
+executable path (i.e., Neovim path)). You can change this by using the top
+menu option in the Unity Editor: `Neovim -> Change Open-File Request Args`
+which will show the following popup:
+
+<img width="607" height="237" alt="image" src="https://github.com/user-attachments/assets/5f056048-a34c-4f70-9e07-b64e6d5f9287" />
+
+Where:
+- `{filePath}` -- is replaced by the path to the requested file to be opened by
+  Neovim.
+- `{serverSocket}` -- is replaced by the path to the IPC socket between
+  the Neovim server instance and the client that will send commands. On Linux, this
+  is replaced by default to `/tmp/nvimsocket`. On Windows, this is replaced by
+  default to `127.0.0.1:<RANDOM-PORT>` (with <RANDOM-PORT> a randomly chosen
+  available port).
+
+## Change Jump-to-Cursor-Position Request Args
+
+By default this package uses
+`--server {serverSocket} --remote-send ":call cursor({line},{column})<CR>"` as
+arguments for process execution when a request to jump to cursor position is
+instantiated. You can change this by using the top menu option in the Unity
+Editor: `Neovim -> Change Jump-to-Cursor-Position Args` which will show the
+following popup:
+
+<img width="606" height="238" alt="image" src="https://github.com/user-attachments/assets/e1dc2a78-002a-4061-bb23-71b9fdb459d4" />
+Where:
+- `{serverSocket}` -- is replaced by the path to the IPC socket between
+  the Neovim server instance and the client that will send commands. On Linux, this
+  is replaced by default to `/tmp/nvimsocket`. On Windows, this is replaced by
+  default to `127.0.0.1:<RANDOM-PORT>` (with <RANDOM-PORT> a randomly chosen
+  available port).
+- `{line}` -- is replaced by the line number that was requested to jump into.
+- `{column}` -- is replaced by the column number that was requested to jump into.
 
 ## LSP is Not Working for a Particular Package?
 
