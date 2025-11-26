@@ -27,7 +27,7 @@ namespace Neovim.Editor
 
           var args_field = new TextField();
           var templates_dd = new DropdownField(NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates.ToList(), 0);
-          templates_dd.SetValueWithoutNotify("select jump-to-cursor-position request args");
+          templates_dd.SetValueWithoutNotify("select template");
 
           label.text = "Enter custom jump-to-cursor-position request args (or choose template):";
 
@@ -38,6 +38,12 @@ namespace Neovim.Editor
           msg_field.isReadOnly = true;
           msg_field.style.flexGrow = 2;
           msg_field.verticalScrollerVisibility = ScrollerVisibility.AlwaysVisible;
+
+          // add explanation for placeholders
+          msg_field.value =
+            "{serverSocket} - is replaced by the socket that is used to communicate with the Neovim server instance (TCP socket on Windows and Unix Domain socket path on Linux).\n"
+            + "{line} - is replaced by the line number that was requested to jump into.\n"
+            + "{column} is replaced by the column number that was requested to jump into.\n\n";
 
           var update_btn = new Button() { text = "Update" };
           update_btn.clicked += () => {

@@ -6,21 +6,16 @@ using System.Linq;
 
 namespace Neovim.Editor
 {
-  public class NeovimTerminalLaunchCmd : EditorWindow
+  public class NeovimChangeTerminalLaunchCmd : EditorWindow
   {
-      public static void RequestTerminalLaunchCmdChange() {
-          var window = EditorWindow.GetWindow<NeovimTerminalLaunchCmd>(true, "Neovim Terminal Launch Command");
-          window.position = new Rect(Screen.width / 2, Screen.height / 2, 600, 200);
-          window.minSize = new Vector2(500, 125);
-          window.ShowModalUtility();
-      }
-
-
       // MenuItem Creates a menu item and invokes the static function that follows it when the menu item is selected.
       [MenuItem("Neovim/Change Terminal Launch Cmd")]
       static void Init()
       {
-        RequestTerminalLaunchCmdChange();
+        var window = EditorWindow.GetWindow<NeovimChangeTerminalLaunchCmd>(true, "Change Terminal Launch Command");
+        window.position = new Rect(Screen.width / 2, Screen.height / 2, 600, 225);
+        window.minSize = new Vector2(500, 125);
+        window.ShowModalUtility();
       }
 
       // CreateGUI is called when the EditorWindow's rootVisualElement is ready to be populated.
@@ -35,7 +30,7 @@ namespace Neovim.Editor
           var termLaunchArgsField = new TextField();
           var termLaunchTemplates = new DropdownField(NeovimCodeEditor.s_TermLaunchCmds
               .Select((cmdargs, _) => cmdargs.Item1).ToList(), 0);
-          termLaunchTemplates.SetValueWithoutNotify("select terminal launch template cmd & args");
+          termLaunchTemplates.SetValueWithoutNotify("select template");
 
           label.text = "Enter custom terminal launch cmd & args (or choose template):";
 
@@ -55,6 +50,12 @@ namespace Neovim.Editor
           // without this crap you can't stretch the stupid TextField... well done Unity,
           // after all these years a basic task such as this took me fucking 3 hours
           msgField.verticalScrollerVisibility = ScrollerVisibility.AlwaysVisible;
+
+          // add explanation for placeholders
+          msgField.value =
+              "{app} - is replaced by the current chosen Neovim path.\n"
+            + "{filePath} - is replaced by the path to requested file to be opened.\n"
+            + "{serverSocket} - is replaced by the socket that is used to communicate with the Neovim server instance (TCP socket on Windows and Unix Domain socket path on Linux).\n\n";
 
           var updateBtn = new Button() { text = "Update" };
           updateBtn.clicked += () => OnAddTermLaunchCmd(termLaunchCmdField, termLaunchArgsField, msgField);

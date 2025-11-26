@@ -27,7 +27,7 @@ namespace Neovim.Editor
 
           var args_field = new TextField();
           var templates_dd = new DropdownField(NeovimCodeEditor.s_OpenFileArgsTemplates.ToList(), 0);
-          templates_dd.SetValueWithoutNotify("select open-file request args");
+          templates_dd.SetValueWithoutNotify("select template");
 
           label.text = "Enter custom open-file request args (or choose template):";
 
@@ -45,6 +45,11 @@ namespace Neovim.Editor
           msg_field.isReadOnly = true;
           msg_field.style.flexGrow = 2;
           msg_field.verticalScrollerVisibility = ScrollerVisibility.AlwaysVisible;
+
+          // add explanation for placeholders
+          msg_field.value =
+            "{filePath} - is replaced by the path to requested file to be opened.\n"
+            + "{serverSocket} - is replaced by the socket that is used to communicate with the Neovim server instance (TCP socket on Windows and Unix Domain socket path on Linux).\n\n";
 
           var update_btn = new Button() { text = "Update" };
           update_btn.clicked += () => {

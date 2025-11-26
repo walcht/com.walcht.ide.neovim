@@ -70,7 +70,7 @@ namespace Neovim.Editor
 #endif
 
     // terminal launch command template - use this template for adding new launch cmds
-    public static readonly (string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}");
+    public static readonly (string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}");
 
     // list of neovim launch cmds from popular terminal emulators - this is
     // just a hardcoded list so that non-tech-savy users can just get to
@@ -78,15 +78,15 @@ namespace Neovim.Editor
     public static readonly (string, string)[] s_TermLaunchCmds =
 #if UNITY_EDITOR_LINUX
     {
-        ("gnome-terminal", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}"),
-        ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocketPath}"),
-        ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocketPath}"),
-        ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocketPath}"),
+        ("gnome-terminal", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
+        ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
+        ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
+        ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocket}"),
     };
 #else
     {
-        ("{app}", "{filePath} --listen {serverSocketPath}"),  // run nvim.exe directly
-        ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocketPath}"),
+        ("{app}", "{filePath} --listen {serverSocket}"),  // run nvim.exe directly
+        ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
     };
 #endif
 
@@ -443,7 +443,7 @@ fi
             p.StartInfo.Arguments = termLaunchArgs
               .Replace("{app}", app)
               .Replace("{filePath}", $"\"{filePath}\"")
-              .Replace("{serverSocketPath}", s_ServerSocket);
+              .Replace("{serverSocket}", s_ServerSocket);
             p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
             p.StartInfo.CreateNoWindow = false;
             p.StartInfo.UseShellExecute = true;  // has to be true on Windows (irrelevant on Linux)
