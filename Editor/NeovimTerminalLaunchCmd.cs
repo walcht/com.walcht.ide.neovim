@@ -76,11 +76,11 @@ namespace Neovim.Editor
 
       private void OnAddTermLaunchCmd(TextField termLaunchCmd, TextField termLaunchArgs, TextField msgField) {
         if (!NeovimCodeEditor.TryChangeTermLaunchCmd((termLaunchCmd.value, termLaunchArgs.value))) {
-          msgField.value = "[ERROR] provided terminal is not available\n"
+          msgField.value += "[ERROR] provided terminal is not available\n"
             + $"[ERROR] 'which {termLaunchCmd.value}' returned !=0 value\n";
           return;
         }
-        msgField.value = "[INFO] successfully changed terminal launch command\n";
+        msgField.value += "[INFO] successfully changed terminal launch command\n";
       }
   }
 }
