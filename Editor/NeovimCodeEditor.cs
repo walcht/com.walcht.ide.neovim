@@ -19,6 +19,27 @@ namespace Neovim.Editor
     static readonly string[] _supportedFileNames = { "nvim", "nvim.exe" };
     static readonly bool s_WindowFocusingAvailable = false;
     static string s_ServerSocket = "/tmp/nvimsocket";
+
+    /// <summary>
+    ///   These are the default template arguments that one of which can potentially be used
+    ///   to send request to the Neovim server instance upon opening a file (or clicking on
+    ///   error message in console, etc).
+    ///   First entry is the default.
+    /// </summary>
+    public static readonly string[] s_OpenFileArgsTemplates = {
+      "--server {serverSocket} --remote-tab {filePath}",
+    };
+
+    /// <summary>
+    ///   These are the default template arguments that one of which can potentially be used
+    ///   to send request to the Neovim server instance to jump to a given cursor position.
+    ///   First entry is the default.
+    /// </summary>
+    public static readonly string[] s_JumpToCursorPositionArgsTemplates = {
+      "--server {serverSocket} --remote-send \":call cursor({line},{column})<CR>\"",
+    };
+
+    // add your file extension here if you want it to be opened by Neovim via Unity
     static readonly string[] s_SupportedExtensions = {
       // csharp
       "cs",
@@ -89,9 +110,65 @@ namespace Neovim.Editor
 
     private IGenerator m_Generator = null;
 
+    private static bool SetDefaults()
+    {
+      // get terminal launch cmd and its args from Unity editor preferences
+      string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
+      string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
+
+      // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
+      if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
+      {
+        // pick the first default available terminal from the list of 'popular' terminal emulators. Obviously this is
+        // some sort of a heuristic but the user can explicitly change this through the GUI.
+        bool s = false;
+        foreach (var termLaunch in s_TermLaunchCmds)
+        {
+          if (TryChangeTermLaunchCmd(termLaunch))
+          {
+            s = true;
+            break;
+          }
+        }
+        // no available terminal is found from the 'most common' term list
+        if (!s)
+        {
+          // you can't show a GUI window here -- so just log a warning
+          Debug.LogError($"[neovim.ide] no valid terminal launcher is available. " +
+              "You have to set the terminal launch command by going to the menu item: Neovim => ChangeTerminalLaunchCmd");
+          return false;
+        }
+      }
+
+      if (string.IsNullOrWhiteSpace(EditorPrefs.GetString("NvimUnityOpenFileArgs"))) {
+        if (!s_OpenFileArgsTemplates.Any())
+        {
+          Debug.LogError($"[neovim.ide] TODO");
+          return false;
+        }
+        EditorPrefs.SetString("NvimUnityOpenFileArgs", s_OpenFileArgsTemplates[0]);
+      }
+
+      if (string.IsNullOrWhiteSpace(EditorPrefs.GetString("NvimUnityJumpToCursorPositionArgs")))
+      {
+        if (!s_JumpToCursorPositionArgsTemplates.Any())
+        {
+          Debug.LogError($"[neovim.ide] TODO");
+          return false;
+        }
+        EditorPrefs.SetString("NvimUnityJumpToCursorPositionArgs", s_JumpToCursorPositionArgsTemplates[0]);
+      }
+
+      return true;
+    }
+
     // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
     static NeovimCodeEditor()
     {
+      // set some defaults in case they are not already set (launch cmd and args, open-file args, etc.)
+      if (!SetDefaults())
+        return;
+
       // initialize the discovered Neovim installations array
       s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
         .Where(p => File.Exists(p) || ProcessUtils.CheckCmdExistence($"\"{p}\""))
@@ -336,30 +413,6 @@ fi
       string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
       string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
 
-      // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
-      if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
-      {
-        // pick the first default available terminal from the list of 'popular' terminal emulators. Obviously this is
-        // some sort of a heuristic but the user can explicitly change this through the GUI.
-        bool s = false;
-        foreach (var termLaunch in s_TermLaunchCmds)
-        {
-          if (TryChangeTermLaunchCmd(termLaunch))
-          {
-            s = true;
-            break;
-          }
-        }
-        // no available terminal is found from the 'most common' term list
-        if (!s)
-        {
-          // you can't show a GUI window here -- so just log a warning
-          Debug.LogError($"[neovim.ide] no valid terminal launcher is available. " +
-              "You have to set the terminal launch command by going to the menu item: Neovim => ChangeTerminalLaunchCmd");
-          return false;
-        }
-      }
-
 #if UNITY_EDITOR_LINUX
       string app = CodeEditor.CurrentEditorPath;
 #else // UNITY_EDITOR_WIN
@@ -418,13 +471,15 @@ fi
 
       // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding to the provided filepath
       {
-        string args = $"--server {s_ServerSocket} --remote-tab \"{filePath}\"";
+        string args = EditorPrefs.GetString("NvimUnityOpenFileArgs")
+          .Replace("{serverSocket}", s_ServerSocket)
+          .Replace("{filePath}", $"\"{filePath}\"");
         try
         {
-          ProcessUtils.RunProcessAndKillAfter(app, args);
+          ProcessUtils.RunProcessAndKillAfter(app, args, timeout: 50);
         } catch (Exception e)
         {
-          Debug.LogWarning($"[neovim.ide] failed at opening a remote tab. cmd: {app} {args}. Reason: {e.Message}");
+          Debug.LogWarning($"[neovim.ide] failed at sending request to Neovim server to open a file. cmd: {app} {args}. Reason: {e.Message}");
         }
       }
 
@@ -432,10 +487,13 @@ fi
       // You can do them together in a terminal but not through C# :-|).
       if (line != 1 || column != 0)
       {
-        string args = $"--server {s_ServerSocket} --remote-send \":call cursor({line},{column})<CR>\"";
+        string args = EditorPrefs.GetString("NvimUnityJumpToCursorPositionArgs")
+          .Replace("{serverSocket}", s_ServerSocket)
+          .Replace("{line}", line.ToString())
+          .Replace("{column}", column.ToString());
         try
         {
-          ProcessUtils.RunProcessAndKillAfter(app, args);
+          ProcessUtils.RunProcessAndKillAfter(app, args, timeout: 50);
         }
         catch (Exception e)
         {

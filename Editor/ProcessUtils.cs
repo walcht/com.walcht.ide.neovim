@@ -9,9 +9,13 @@ namespace Neovim.Editor
 {
   public static class ProcessUtils
   {
-    /// this is mainly used to avoid cross-platform issues where, for instance, on Windows
-    /// a call to WaitForExit(timeout) may not behave in an expected way.
-    public static void RunProcessAndKillAfter(string app, string args, int timeout = 200)
+    /// <summary>
+    ///   This is expected to be mainly used to spawn processes that are expected to exit
+    ///   almost immediately (e.g., think of spawning a process to send a Neovim request).
+    ///   This is also used to avoid cross-platform issues where, for instance, on Windows
+    ///   a call to WaitForExit(timeout) may not behave in an expected way.
+    /// </summary>
+    public static void RunProcessAndKillAfter(string app, string args, int timeout = 500)
     {
       using (Process p = new())
       {
