@@ -100,6 +100,7 @@ Editor: `Neovim -> Change Jump-to-Cursor-Position Args` which will show the
 following popup:
 
 <img width="606" height="238" alt="image" src="https://github.com/user-attachments/assets/e1dc2a78-002a-4061-bb23-71b9fdb459d4" />
+
 Where:
 - `{serverSocket}` -- is replaced by the path to the IPC socket between
   the Neovim server instance and the client that will send commands. On Linux, this
