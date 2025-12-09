@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
 using System.Linq;
+using static UIUtils;
 
 namespace Neovim.Editor
 {
@@ -44,7 +45,7 @@ namespace Neovim.Editor
           msg_field.multiline = true;
           msg_field.isReadOnly = true;
           msg_field.style.flexGrow = 2;
-          msg_field.verticalScrollerVisibility = ScrollerVisibility.AlwaysVisible;
+          SafeSetScrollerVisibility(msg_field, ScrollerVisibility.AlwaysVisible);
 
           // add explanation for placeholders
           msg_field.value =
