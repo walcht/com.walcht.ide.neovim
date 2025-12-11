@@ -172,16 +172,17 @@ said handle.
 
 If, on the other hand, your terminal launch command spawns a child process and
 exits immediately (e.g., `wt`) then figuring out the handle of the window owning
-the Neovim server instance is much tricket. To do so, a Powershell script that
+the Neovim server instance is much trickier. To do so, a Powershell script that
 is executed in the child process (or any other child process as long as the
-parent IS the process containing the Neovim server instance) sends its Parent
+parent IS the process containing the Neovim server instance) sends its parent
 PID (PPID) to a pipe and this plugin reads it and gets the window handle from
 it.
 
 It is therefore important to note, again, that depending on the terminal launch
 command you set up, auto window focusing may or may not work. Since there are a
-lot of terminals out there, I cannot dedicate time to supporting all of them - 
-please do open a PR in case you think your terminal should be supported.
+lot of terminals out there, I cannot dedicate enough time to support all of
+them - please do open a PR in case you think your custom terminal launch
+command should be added/supported.
 
 ## TODOs
 
