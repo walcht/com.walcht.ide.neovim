@@ -55,6 +55,9 @@ namespace Neovim.Editor
           msgField.value =
               "{app} - is replaced by the current chosen Neovim path.\n"
             + "{filePath} - is replaced by the path to requested file to be opened.\n"
+#if UNITY_EDITOR_WIN
+            + "{getProcessPPIDScriptPath} - is replaced by the path to the GetProcessPPID.ps1 Powershell script which is used to determine the parent process ID which is then used for auto window focusing.\n"
+#endif
             + "{serverSocket} - is replaced by the socket that is used to communicate with the Neovim server instance (TCP socket on Windows and Unix Domain socket path on Linux).\n\n";
 
           var updateBtn = new Button() { text = "Update" };

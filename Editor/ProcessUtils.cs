@@ -9,6 +9,26 @@ namespace Neovim.Editor
 {
   public static class ProcessUtils
   {
+#if UNITY_EDITOR_WIN
+    public static IntPtr GetWindowHandle(Process p, int processStartupTimeout)
+    {
+      // make sure to wait until the process finishes starting (remember that Start())
+      // does NOT block until the process has actually started)
+      if (!p.WaitForInputIdle(processStartupTimeout))
+        throw new InvalidOperationException();
+
+      // refresh/update the process' properties (we only care about the window handle)
+      p.Refresh();
+      IntPtr wh = p.MainWindowHandle;
+      if (wh == IntPtr.Zero)
+        throw new InvalidOperationException();
+
+      return wh;
+
+    }
+#endif
+
+
     /// <summary>
     ///   This is expected to be mainly used to spawn processes that are expected to exit
     ///   almost immediately (e.g., think of spawning a process to send a Neovim request).

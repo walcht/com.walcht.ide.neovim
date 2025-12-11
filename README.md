@@ -153,6 +153,36 @@ the `NeovimIntegrationTest.sln` file):
 I have no idea whether the Roslyn LSP's performance deteriorates proportionally (linearly)
 to the number of generated`.csproj` files.
 
+## Auto Window Focusing on Windows
+
+> [!Note]
+> It is recommended that you use [Windows Terminal][wt] (`wt`) on Windows 10/11
+> and configure its default shell to Powershell.
+
+Currently, auto window focusing is only tested on:
+
+ - `wt` (Windows Terminal)
+ - and `alacritty`
+
+The way Neovim server window focusing is achieved depends on whether your
+terminal launch command does NOT spawn a child process that is responsible for
+the Neovim server window (e.g., `alacritty`). This case is very simple to handle
+by just getting the launched process' handle and using Win32 API to focus on
+said handle.
+
+If, on the other hand, your terminal launch command spawns a child process and
+exits immediately (e.g., `wt`) then figuring out the handle of the window owning
+the Neovim server instance is much tricket. To do so, a Powershell script that
+is executed in the child process (or any other child process as long as the
+parent IS the process containing the Neovim server instance) sends its Parent
+PID (PPID) to a pipe and this plugin reads it and gets the window handle from
+it.
+
+It is therefore important to note, again, that depending on the terminal launch
+command you set up, auto window focusing may or may not work. Since there are a
+lot of terminals out there, I cannot dedicate time to supporting all of them - 
+please do open a PR in case you think your terminal should be supported.
+
 ## TODOs
 
 - [ ] automatically refresh and sync Unity project when Neovim changes/adds assets (CRUCIAL)
@@ -166,3 +196,4 @@ MIT License. Read `license.txt` file.
 [activate-window-by-title]: https://github.com/lucaswerkmeister/activate-window-by-title
 [unity-external-tools-menu]: https://raw.githubusercontent.com/walcht/walcht/refs/heads/master/images/unity-external-tools.png
 [unity-asmdef]: https://docs.unity3d.com/6000.2/Documentation/Manual/cus-asmdef.html
+[wt]: https://github.com/microsoft/terminal
