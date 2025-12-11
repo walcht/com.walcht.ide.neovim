@@ -433,15 +433,10 @@ fi
       if (line == -1) line = 1;
       if (column == -1) column = 0;
 
-      // get terminal launch cmd and its args from Unity editor preferences
-      string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
-      string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
-
-#if UNITY_EDITOR_LINUX
-      string app = CodeEditor.CurrentEditorPath;
-#else // UNITY_EDITOR_WIN
-      string app = $"\"{CodeEditor.CurrentEditorPath}\"";
-#endif
+      // we want to return false in case a different editor is supplied (e.g., code.cmd for VSCode)
+      if (!Array.Exists(_supportedFileNames, fn =>
+            string.Compare(fn, Path.GetFileName(CodeEditor.CurrentEditorPath), StringComparison.OrdinalIgnoreCase) == 0))
+        return false;
 
       // only use NeoVim for reasonable file extensions (e.g., do not use NeoVim to open .png files which happens
       // without this check)
@@ -449,6 +444,16 @@ fi
             .TrimStart('.')
             .ToLower()))
         return false;
+
+#if UNITY_EDITOR_LINUX
+      string app = CodeEditor.CurrentEditorPath;
+#else // UNITY_EDITOR_WIN
+      string app = $"\"{CodeEditor.CurrentEditorPath}\"";
+#endif
+
+      // get terminal launch cmd and its args from Unity editor preferences
+      string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
+      string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
 
       if (!IsNvimServerInstanceAlreadyRunning())
       {
