@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
 using System.Linq;
+using static UIUtils;
 
 namespace Neovim.Editor
 {
@@ -49,7 +50,7 @@ namespace Neovim.Editor
           msgField.style.flexGrow = 2;
           // without this crap you can't stretch the stupid TextField... well done Unity,
           // after all these years a basic task such as this took me fucking 3 hours
-          msgField.verticalScrollerVisibility = ScrollerVisibility.AlwaysVisible;
+          SafeSetScrollerVisibility(msgField, ScrollerVisibility.AlwaysVisible);
 
           // add explanation for placeholders
           msgField.value =
