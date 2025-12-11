@@ -9,6 +9,10 @@ using UnityEngine;
 using Unity.CodeEditor;
 using Debug = UnityEngine.Debug;
 using System.Threading.Tasks;
+#if UNITY_EDITOR_WIN
+using System.IO.Pipes;
+using System.Runtime.InteropServices;
+#endif
 
 
 namespace Neovim.Editor
@@ -17,8 +21,15 @@ namespace Neovim.Editor
   public class NeovimCodeEditor : IExternalCodeEditor
   {
     static readonly string[] _supportedFileNames = { "nvim", "nvim.exe" };
-    static readonly bool s_WindowFocusingAvailable = false;
+    static bool s_WindowFocusingAvailable = false;
+
+#if UNITY_EDITOR_LINUX
     static string s_ServerSocket = "/tmp/nvimsocket";
+#else // UNITY_EDITOR_WIN
+    // this will be initialized to some "127.0.0.1:<random-port>" because Unix domain sockets on Windows are a bitch
+    static string s_ServerSocket;
+    static string s_GetProcessPPIDPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessPPID.ps1");
+#endif
 
     /// <summary>
     ///   These are the default template arguments that one of which can potentially be used
@@ -67,6 +78,12 @@ namespace Neovim.Editor
       UNKNOWN,  // can't be determined :/
     }
     private static readonly LinuxDesktopEnvironment s_LinuxPlatform;
+#else  // UNITY_EDITOR_WIN
+    [DllImport("user32.dll")]
+    internal static extern IntPtr SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 #endif
 
     // terminal launch command template - use this template for adding new launch cmds
@@ -83,10 +100,14 @@ namespace Neovim.Editor
         ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
         ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocket}"),
     };
-#else
+#else  // UNITY_EDITOR_WIN
     {
-        ("{app}", "{filePath} --listen {serverSocket}"),  // run nvim.exe directly
+        ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}"),  // on Powershell, replace the ';' with "`;"
         ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
+        // ("powershell.exe", "-Command & \"{$host.UI.RawUI.WindowTitle = \"nvimunity\"; {app} {filePath} --listen {serverSocket}}\""),
+        // run nvim.exe directly - avoid this because it will spawn a default terminal window to execute this cmd
+        // which results in auto window focusing not working (i.e., it will spawn 2 process ...)
+        // ("{app}", "{filePath} --listen {serverSocket}"),
     };
 #endif
 
@@ -153,7 +174,7 @@ namespace Neovim.Editor
       {
         if (!s_JumpToCursorPositionArgsTemplates.Any())
         {
-          Debug.LogError($"[neovim.ide] TODO");
+          Debug.LogError($"[neovim.ide] the jump-to-cursor-position arguments templates array should NOT be empty.");
           return false;
         }
         EditorPrefs.SetString("NvimUnityJumpToCursorPositionArgs", s_JumpToCursorPositionArgsTemplates[0]);
@@ -230,8 +251,7 @@ fi
         }
       }
 #else  // UNITY_EDITOR_WIN
-      // TODO: add auto Window focus on Windows platforms
-      s_WindowFocusingAvailable = false;
+      s_WindowFocusingAvailable = true;
 #endif
 
       NeovimCodeEditor editor = new(GeneratorFactory.GetInstance(GeneratorStyle.SDK));
@@ -282,6 +302,10 @@ fi
       // serialize the new terminal launch command in Unity Editor's preferences settings
       EditorPrefs.SetString("NvimUnityTermLaunchCmd", cmd);
       EditorPrefs.SetString("NvimUnityTermLaunchArgs", args);
+
+#if UNITY_EDITOR_WIN
+      EditorPrefs.DeleteKey("NvimPrevServerSocket");
+#endif
 
       return true;
     }
@@ -443,16 +467,64 @@ fi
             p.StartInfo.Arguments = termLaunchArgs
               .Replace("{app}", app)
               .Replace("{filePath}", $"\"{filePath}\"")
-              .Replace("{serverSocket}", s_ServerSocket);
+              .Replace("{serverSocket}", s_ServerSocket)
+#if UNITY_EDITOR_WIN
+              .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
+#endif
+            ;
             p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
             p.StartInfo.CreateNoWindow = false;
             p.StartInfo.UseShellExecute = true;  // has to be true on Windows (irrelevant on Linux)
+
+            // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
 
             // start and do not care (do not wait for exit)
             p.Start();
 
 #if UNITY_EDITOR_WIN
+
+            // save the server socket so that we can communicate with it later
+            // (e.g., when Unity exits but the server is still running)
             EditorPrefs.SetString("NvimPrevServerSocket", s_ServerSocket);
+
+            // the idea here is to figure out the handle of the process running the Neovim server instance
+            // this is a bit tricky on Windows - because depending on the terminal launch cmd, it might
+            // spawn a child process or it might not.
+            //
+            // first - we assume that the terminal launch cmd's process is the one that has Neovim server
+            // open (i.e., no child process)
+            int process_startup_timeout = 1000;
+            try
+            {
+              IntPtr wh = ProcessUtils.GetWindowHandle(p, process_startup_timeout);
+              EditorPrefs.SetString("NvimPrevServerProcessIntPtrStringRepr", wh.ToString());
+            }
+            // this probably means that the terminal launch cmd spawns a new child instance that is responsible for the Neovim window
+            catch (InvalidOperationException)
+            {
+                // pipe's name should be the same as in "GetProcessPPID.ps1" script
+                using (var pipeClient = new NamedPipeClientStream(".", @"\\.\pipe\getprocessppidpipe", PipeDirection.In))
+                {
+                  pipeClient.Connect(1000);
+                  using (var _sr = new StreamReader(pipeClient))
+                  {
+                    string ppidStr = _sr.ReadLine();
+                    if (ppidStr == null)
+                      throw new Exception("PPID received string is null");
+
+                    var ppid = int.Parse(ppidStr);
+
+                    Process neovimServerProcess = Process.GetProcessById(ppid);
+                    IntPtr wh = ProcessUtils.GetWindowHandle(neovimServerProcess, process_startup_timeout);
+                    EditorPrefs.SetString("NvimPrevServerProcessIntPtrStringRepr", wh.ToString());
+                  }
+                }
+            } catch (Exception)
+            {
+                s_WindowFocusingAvailable = false;
+                Debug.LogWarning($"[neovim.ide] failed to get the PID of the window responsible for the Neovim server instance."
+                    + " Auto window focusing is disabled");
+            }
 #endif
           }
         }
@@ -542,7 +614,9 @@ fi
           break;
       }
 #else  // UNITY_EDITOR_WIN
-
+      IntPtr windowHandle = new (Convert.ToInt64(EditorPrefs.GetString("NvimPrevServerProcessIntPtrStringRepr")));
+      ShowWindow(windowHandle, 5);  // 5 == Activates the window and displays it in its current size and position
+      SetForegroundWindow(windowHandle);
 #endif
 
       return true;
