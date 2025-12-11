@@ -409,10 +409,9 @@ fi
       if (line == -1) line = 1;
       if (column == -1) column = 0;
 
-      Debug.Log(CodeEditor.CurrentEditorPath);
-
       // we want to return false in case a different editor is supplied (e.g., code.cmd for VSCode)
-      if (!Array.Exists(_supportedFileNames, fn => string.Compare(fn, Path.GetFileName(CodeEditor.CurrentEditorPath), StringComparison.OrdinalIgnoreCase) == 0))
+      if (!Array.Exists(_supportedFileNames, fn =>
+            string.Compare(fn, Path.GetFileName(CodeEditor.CurrentEditorPath), StringComparison.OrdinalIgnoreCase) == 0))
         return false;
 
       // only use NeoVim for reasonable file extensions (e.g., do not use NeoVim to open .png files which happens
