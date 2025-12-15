@@ -1,3 +1,6 @@
 *.png
 /[Oo]bj/
 Temp/
+
+*.csproj
+*.csproj.meta
