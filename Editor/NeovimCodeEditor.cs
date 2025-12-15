@@ -605,37 +605,31 @@ fi
       s_ServerSocket = s_Config.PrevServerSocket;
 #endif
 
-      // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding to the provided filepath
+      // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding
+      // to the provided filepath
       {
         string args = s_Config.OpenFileArgs
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{filePath}", $"\"{filePath}\"");
-        try
-        {
-          ProcessUtils.RunProcessAndKillAfter(app, args, timeout: 50);
-        }
-        catch (Exception e)
-        {
-          Debug.LogWarning($"[neovim.ide] failed at sending request to Neovim server to open a file. cmd: {app} {args}. Reason: {e.Message}");
-        }
+
+        if (!ProcessUtils.RunShellCmd($"{app} {args}", timeout: 50))
+          Debug.LogWarning($"[neovim.ide] failed at sending request to Neovim server to open a file. cmd: {app} {args}.");
       }
 
-      // now send request to jump cursor to exact position. You cannot do both --remote-tab and --remote-send at the same time (I have no idea why.
-      // You can do them together in a terminal but not through C# :-|).
+      /*
+      * now send request to jump cursor to exact position. You cannot do both --remote-tab and --remote-send at the
+      * same time (this is a limitation of the Neovim CLI as it will only execute the last --remote argument and not
+      * both)
+      */
       if (line != 1 || column != 0)
       {
         string args = s_Config.JumpToCursorPositionArgs
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{line}", line.ToString())
           .Replace("{column}", column.ToString());
-        try
-        {
-          ProcessUtils.RunProcessAndKillAfter(app, args, timeout: 50);
-        }
-        catch (Exception e)
-        {
-          Debug.LogWarning($"[neovim.ide] failed at jumping to cursor positions. cmd: {app} {args}. Reason: {e.Message}");
-        }
+
+        if (!ProcessUtils.RunShellCmd($"{app} {args}", timeout: 50))
+          Debug.LogWarning($"[neovim.ide] failed at jumping to cursor positions. cmd: {app} {args}");
       }
 
       // optionally focus on Neovim - this is extremely tricky to implement across platforms
