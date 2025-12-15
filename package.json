@@ -22,5 +22,8 @@
     "email": "walid.chtioui.main@gmail.com",
     "url": "https://github.com/walcht"
   },
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.2"
+  },
   "_fingerprint": "af70bb1aa0c02b0324ebb2bb5f4addc34e37a76f"
 }
