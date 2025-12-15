@@ -612,8 +612,7 @@ fi
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{filePath}", $"\"{filePath}\"");
 
-        if (!ProcessUtils.RunShellCmd($"{app} {args}", timeout: 50))
-          Debug.LogWarning($"[neovim.ide] failed at sending request to Neovim server to open a file. cmd: {app} {args}.");
+        ProcessUtils.RunShellCmd($"{app} {args}", timeout: 50);
       }
 
       /*
@@ -628,8 +627,7 @@ fi
           .Replace("{line}", line.ToString())
           .Replace("{column}", column.ToString());
 
-        if (!ProcessUtils.RunShellCmd($"{app} {args}", timeout: 50))
-          Debug.LogWarning($"[neovim.ide] failed at jumping to cursor positions. cmd: {app} {args}");
+        ProcessUtils.RunShellCmd($"{app} {args}", timeout: 50);
       }
 
       // optionally focus on Neovim - this is extremely tricky to implement across platforms
