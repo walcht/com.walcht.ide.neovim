@@ -22,7 +22,7 @@ namespace Neovim.Editor
     static readonly string[] _supportedFileNames = { "nvim", "nvim.exe" };
     static bool s_WindowFocusingAvailable = false;
 
-    public static readonly NeovimEditorConfig s_Config = new();
+    public static NeovimEditorConfig s_Config = new();
 
 #if UNITY_EDITOR_LINUX
     static string s_ServerSocket = "/tmp/nvimsocket";
@@ -96,19 +96,16 @@ namespace Neovim.Editor
     public static readonly (string, string)[] s_TermLaunchCmds =
 #if UNITY_EDITOR_LINUX
     {
-        ("gnome-terminal", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
-        ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
-        ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
-        ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocket}"),
+      ("gnome-terminal", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
+      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
+      ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
+      ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocket}"),
     };
 #else  // UNITY_EDITOR_WIN
     {
-        ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}"),  // on Powershell, replace the ';' with "`;"
-        ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
-        // ("powershell.exe", "-Command & \"{$host.UI.RawUI.WindowTitle = \"nvimunity\"; {app} {filePath} --listen {serverSocket}}\""),
-        // run nvim.exe directly - avoid this because it will spawn a default terminal window to execute this cmd
-        // which results in auto window focusing not working (i.e., it will spawn 2 process ...)
-        // ("{app}", "{filePath} --listen {serverSocket}"),
+      // on Powershell, replace the ';' with "`;"
+      ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}"),
+      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
     };
 #endif
 
@@ -132,6 +129,10 @@ namespace Neovim.Editor
 
     private static IGenerator s_Generator = null;
 
+    /// <summary>
+    /// Sets the default terminal launch command, terminal launch arguments, open-file request arguments,
+    /// and jump-to-cursor-position request arguments in case any of them is null.
+    /// </summary>
     private static bool SetDefaults()
     {
       // get terminal launch cmd and its args from Unity editor preferences
@@ -166,8 +167,7 @@ namespace Neovim.Editor
       {
         if (!s_OpenFileArgsTemplates.Any())
         {
-          Debug.LogError($"[neovim.ide] open-file template list should NOT be empty");
-          return false;
+          Debug.LogError($"[neovim.ide] open-file template list is empty");
         }
         s_Config.OpenFileArgs = s_OpenFileArgsTemplates[0];
         s_Config.Save();
@@ -177,8 +177,7 @@ namespace Neovim.Editor
       {
         if (!s_JumpToCursorPositionArgsTemplates.Any())
         {
-          Debug.LogError($"[neovim.ide] the jump-to-cursor-position arguments templates array should NOT be empty.");
-          return false;
+          Debug.LogError($"[neovim.ide] the jump-to-cursor-position arguments templates array is empty");
         }
         s_Config.JumpToCursorPositionArgs = s_JumpToCursorPositionArgsTemplates[0];
         s_Config.Save();
@@ -187,14 +186,25 @@ namespace Neovim.Editor
       return true;
     }
 
-    // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
-    static NeovimCodeEditor()
+    public static void InitConfig()
     {
       s_Config = NeovimEditorConfig.Load();
 
       // set some defaults in case they are not already set (launch cmd and args, open-file args, etc.)
       if (!SetDefaults())
         return;
+
+      // sync deserialized analyzers with the project generator's analyzers
+      s_Generator.SetAnalyzers(s_Config.Analyzers);
+    }
+
+    // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
+    static NeovimCodeEditor()
+    {
+
+      s_Generator = new SdkStyleProjectGeneration();
+
+      InitConfig();
 
       // initialize the discovered Neovim installations array
       s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
@@ -260,11 +270,6 @@ fi
 #else  // UNITY_EDITOR_WIN
       s_WindowFocusingAvailable = true;
 #endif
-
-      s_Generator = new SdkStyleProjectGeneration();
-
-      // sync deserialized analyzers with the project generator's analyzers
-      s_Generator.SetAnalyzers(s_Config.Analyzers);
 
       NeovimCodeEditor editor = new(s_Generator);
       CodeEditor.Register(editor);
