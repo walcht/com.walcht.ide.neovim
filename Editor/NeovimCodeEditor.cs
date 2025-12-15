@@ -1,4 +1,4 @@
-#if UNITY_EDITOR_WIN || UNITY_EDITOR_LINUX // no support for MacOS yet...
+#pragma warning disable IDE0130
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +8,6 @@ using UnityEditor;
 using UnityEngine;
 using Unity.CodeEditor;
 using Debug = UnityEngine.Debug;
-using System.Threading.Tasks;
 #if UNITY_EDITOR_WIN
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
@@ -23,12 +22,14 @@ namespace Neovim.Editor
     static readonly string[] _supportedFileNames = { "nvim", "nvim.exe" };
     static bool s_WindowFocusingAvailable = false;
 
+    public static readonly NeovimEditorConfig s_Config = new();
+
 #if UNITY_EDITOR_LINUX
     static string s_ServerSocket = "/tmp/nvimsocket";
 #else // UNITY_EDITOR_WIN
     // this will be initialized to some "127.0.0.1:<random-port>" because Unix domain sockets on Windows are a bitch
     static string s_ServerSocket;
-    static string s_GetProcessPPIDPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessPPID.ps1");
+    static readonly string s_GetProcessPPIDPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessPPID.ps1");
 #endif
 
     /// <summary>
@@ -129,13 +130,13 @@ namespace Neovim.Editor
      };
 #endif
 
-    private IGenerator m_Generator = null;
+    private static IGenerator s_Generator = null;
 
     private static bool SetDefaults()
     {
       // get terminal launch cmd and its args from Unity editor preferences
-      string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
-      string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
+      string termLaunchCmd = s_Config.TermLaunchCmd;
+      string termLaunchArgs = s_Config.TermLaunchArgs;
 
       // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
       if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
@@ -161,23 +162,26 @@ namespace Neovim.Editor
         }
       }
 
-      if (string.IsNullOrWhiteSpace(EditorPrefs.GetString("NvimUnityOpenFileArgs"))) {
+      if (string.IsNullOrWhiteSpace(s_Config.OpenFileArgs))
+      {
         if (!s_OpenFileArgsTemplates.Any())
         {
-          Debug.LogError($"[neovim.ide] TODO");
+          Debug.LogError($"[neovim.ide] open-file template list should NOT be empty");
           return false;
         }
-        EditorPrefs.SetString("NvimUnityOpenFileArgs", s_OpenFileArgsTemplates[0]);
+        s_Config.OpenFileArgs = s_OpenFileArgsTemplates[0];
+        s_Config.Save();
       }
 
-      if (string.IsNullOrWhiteSpace(EditorPrefs.GetString("NvimUnityJumpToCursorPositionArgs")))
+      if (string.IsNullOrWhiteSpace(s_Config.JumpToCursorPositionArgs))
       {
         if (!s_JumpToCursorPositionArgsTemplates.Any())
         {
           Debug.LogError($"[neovim.ide] the jump-to-cursor-position arguments templates array should NOT be empty.");
           return false;
         }
-        EditorPrefs.SetString("NvimUnityJumpToCursorPositionArgs", s_JumpToCursorPositionArgsTemplates[0]);
+        s_Config.JumpToCursorPositionArgs = s_JumpToCursorPositionArgsTemplates[0];
+        s_Config.Save();
       }
 
       return true;
@@ -186,6 +190,8 @@ namespace Neovim.Editor
     // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
     static NeovimCodeEditor()
     {
+      s_Config = NeovimEditorConfig.Load();
+
       // set some defaults in case they are not already set (launch cmd and args, open-file args, etc.)
       if (!SetDefaults())
         return;
@@ -193,28 +199,29 @@ namespace Neovim.Editor
       // initialize the discovered Neovim installations array
       s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
         .Where(p => File.Exists(p) || ProcessUtils.CheckCmdExistence($"\"{p}\""))
-        .Select((p, _) => {
+        .Select((p, _) =>
+        {
           // get Neovim installation version
           string version = "v-unknown";
-          List<string> output_lines;
-          ProcessUtils.GetCmdStdOutput($"\"{p}\" --version", out output_lines);
-          if (output_lines.Any() && !String.IsNullOrWhiteSpace(output_lines[0]))
+          ProcessUtils.GetCmdStdOutput($"\"{p}\" --version", out List<string> output_lines);
+          if (output_lines.Any() && !string.IsNullOrWhiteSpace(output_lines[0]))
           {
-            version = output_lines[0].Substring(output_lines[0].IndexOf(' ') + 1);
+            version = output_lines[0][(output_lines[0].IndexOf(' ') + 1)..];
           }
-          return new CodeEditor.Installation{
+          return new CodeEditor.Installation
+          {
             Name = $"Neovim {version}",
-            Path = Path.GetFullPath(p), 
+            Path = Path.GetFullPath(p),
           };
         })
         .ToArray();
 
-        // do NOT proceed if there aren't any discovered Neovim installations
-        if (!s_DiscoveredNeovimInstallations.Any())
-        {
-          Debug.LogWarning("[neovim.ide] no Neovim installation was discovered");
-          return;
-        }
+      // do NOT proceed if there aren't any discovered Neovim installations
+      if (!s_DiscoveredNeovimInstallations.Any())
+      {
+        Debug.LogWarning("[neovim.ide] no Neovim installation was discovered");
+        return;
+      }
 
 #if UNITY_EDITOR_LINUX
       s_LinuxPlatform = DetermineLinuxDesktopEnvironment();
@@ -254,13 +261,18 @@ fi
       s_WindowFocusingAvailable = true;
 #endif
 
-      NeovimCodeEditor editor = new(GeneratorFactory.GetInstance(GeneratorStyle.SDK));
+      s_Generator = new SdkStyleProjectGeneration();
+
+      // sync deserialized analyzers with the project generator's analyzers
+      s_Generator.SetAnalyzers(s_Config.Analyzers);
+
+      NeovimCodeEditor editor = new(s_Generator);
       CodeEditor.Register(editor);
     }
 
     public void CreateIfDoesntExist()
     {
-      m_Generator.Sync();
+      s_Generator.Sync();
     }
 
 
@@ -300,23 +312,24 @@ fi
       }
 
       // serialize the new terminal launch command in Unity Editor's preferences settings
-      EditorPrefs.SetString("NvimUnityTermLaunchCmd", cmd);
-      EditorPrefs.SetString("NvimUnityTermLaunchArgs", args);
+      s_Config.TermLaunchCmd = cmd;
+      s_Config.TermLaunchArgs = args;
 
 #if UNITY_EDITOR_WIN
-      EditorPrefs.DeleteKey("NvimPrevServerSocket");
+      s_Config.PrevServerSocket = null;
 #endif
 
+      s_Config.Save();
       return true;
     }
 
-    private static CodeEditor.Installation[] s_DiscoveredNeovimInstallations;
+    private static readonly CodeEditor.Installation[] s_DiscoveredNeovimInstallations;
     public CodeEditor.Installation[] Installations => s_DiscoveredNeovimInstallations;
 
 
     public NeovimCodeEditor(IGenerator projectGeneration)
     {
-      m_Generator = projectGeneration;
+      s_Generator = projectGeneration;
     }
 
 
@@ -333,18 +346,64 @@ fi
     {
       editorPath = Path.GetFullPath(editorPath);
       installation = s_DiscoveredNeovimInstallations.FirstOrDefault(i => i.Path == editorPath);
-      return !(object.Equals(installation, default(CodeEditor.Installation)));
+      return !Equals(installation, default(CodeEditor.Installation));
     }
 
+    private static void TryAddAnalyzer(string path)
+    {
+      if (s_Config.TryAddAnalyzer(path))
+      {
+        Debug.Log($"[neovim.ide] added analyzer: {Path.GetFileName(path)}");
+        s_Config.Save();
+        s_Generator.Sync();
+      }
+    }
 
+    private const int EDITOR_GUI_ELEMENT_HEIGHT = 37;
+
+    private Vector2 m_ScrollViewPos;
     // Unity calls this method when it populates "Preferences/External Tools"
     // in order to allow the code editor to generate necessary GUI. For example,
     // when creating an an argument field for modifying the arguments sent to
     // the code editor.
     public void OnGUI()
     {
-      EditorGUILayout.LabelField("Generate .csproj files for:");
+      EditorGUILayout.BeginHorizontal();
+      {
+        TryAddAnalyzer(EditorGUILayout.DelayedTextField("Add analyzer: ", string.Empty));
+        if (GUILayout.Button("Browse", GUILayout.Width(100)))
+          TryAddAnalyzer(EditorUtility.OpenFilePanel("Select analyzer to add (.dll)", "", "dll"));
+      }
+      EditorGUILayout.EndHorizontal();
 
+      // show currently used custom analyzers
+      if (s_Config.Analyzers.Any())
+      {
+        EditorGUILayout.LabelField("Current analyzers: ");
+        EditorGUI.indentLevel++;
+        m_ScrollViewPos = EditorGUILayout.BeginScrollView(m_ScrollViewPos, GUILayout.Height(Math.Min(s_Config.Analyzers.Count * EDITOR_GUI_ELEMENT_HEIGHT, 3 * EDITOR_GUI_ELEMENT_HEIGHT)));
+        {
+          for (int i = s_Config.Analyzers.Count - 1; i >= 0; --i)
+          {
+            EditorGUILayout.BeginHorizontal();
+            {
+              EditorGUILayout.LabelField(Path.GetFileNameWithoutExtension(s_Config.Analyzers[i]) + ": ", GUILayout.Width(233));
+              EditorGUILayout.LabelField(s_Config.Analyzers[i], GUILayout.ExpandWidth(true));
+              if (GUILayout.Button("Remove", GUILayout.Width(100)))
+              {
+                s_Config.DelAnalyzerAt(i);
+                s_Config.Save();
+                s_Generator.Sync();
+              }
+            }
+            EditorGUILayout.EndHorizontal();
+          }
+        }
+        EditorGUILayout.EndScrollView();
+        EditorGUI.indentLevel--;
+      }
+
+      EditorGUILayout.LabelField("Generate .csproj files for:");
       EditorGUI.indentLevel++;
       {
         SettingsButton(ProjectGenerationFlag.Embedded, "Embedded packages", "");
@@ -367,18 +426,18 @@ fi
       rect.width = 252;
       if (GUI.Button(rect, "Regenerate project files"))
       {
-        m_Generator.Sync();
+        s_Generator.Sync();
       }
     }
 
 
     private void SettingsButton(ProjectGenerationFlag preference, string guiMessage, string toolTip)
     {
-      var prevValue = m_Generator.AssemblyNameProvider.ProjectGenerationFlag.HasFlag(preference);
+      var prevValue = s_Generator.AssemblyNameProvider.ProjectGenerationFlag.HasFlag(preference);
       var newValue = EditorGUILayout.Toggle(new GUIContent(guiMessage, toolTip), prevValue);
       if (newValue != prevValue)
       {
-        m_Generator.AssemblyNameProvider.ToggleProjectGeneration(preference);
+        s_Generator.AssemblyNameProvider.ToggleProjectGeneration(preference);
       }
     }
 
@@ -387,7 +446,7 @@ fi
     public void SyncIfNeeded(string[] addedFiles, string[] deletedFiles,
         string[] movedFiles, string[] movedFromFiles, string[] importedFiles)
     {
-      m_Generator.SyncIfNeeded(addedFiles.Union(deletedFiles).Union(movedFiles).Union(movedFromFiles).ToList(),
+      s_Generator.SyncIfNeeded(addedFiles.Union(deletedFiles).Union(movedFiles).Union(movedFromFiles).ToList(),
           importedFiles);
     }
 
@@ -398,7 +457,7 @@ fi
     public void SyncAll()
     {
       AssetDatabase.Refresh();
-      m_Generator.Sync();
+      s_Generator.Sync();
     }
 
 
@@ -413,12 +472,12 @@ fi
       // since on Windows we use a randomly available port for the TCP NeoVim server socket, we can know
       // whether a NeoVim server instance is running by trying to bind a TCP listener to the previously used
       // port
-      string prevAddr = EditorPrefs.GetString("NvimPrevServerSocket");
-      if (String.IsNullOrWhiteSpace(prevAddr)) return false;
+      string prevAddr = s_Config.PrevServerSocket;
+      if (string.IsNullOrWhiteSpace(prevAddr)) return false;
 
       int idx = prevAddr.IndexOf(':');
-      string ip = prevAddr.Substring(0, idx);
-      int port = Int32.Parse(prevAddr.Substring(idx + 1));
+      string ip = prevAddr[..idx];
+      int port = int.Parse(prevAddr[(idx + 1)..]);
       return NetUtils.IsPortInUse(ip, port);
 #endif
     }
@@ -429,7 +488,7 @@ fi
     // the reason why, for instance, we return 'false' for image files
     public bool OpenProject(string filePath = "", int line = -1, int column = -1)
     {
-      if (!String.IsNullOrWhiteSpace(filePath) && !File.Exists(filePath)) return false;
+      if (!string.IsNullOrWhiteSpace(filePath) && !File.Exists(filePath)) return false;
       if (line == -1) line = 1;
       if (column == -1) column = 0;
 
@@ -452,8 +511,8 @@ fi
 #endif
 
       // get terminal launch cmd and its args from Unity editor preferences
-      string termLaunchCmd = EditorPrefs.GetString("NvimUnityTermLaunchCmd");
-      string termLaunchArgs = EditorPrefs.GetString("NvimUnityTermLaunchArgs");
+      string termLaunchCmd = s_Config.TermLaunchCmd;
+      string termLaunchArgs = s_Config.TermLaunchArgs;
 
       if (!IsNvimServerInstanceAlreadyRunning())
       {
@@ -465,73 +524,68 @@ fi
 
         try
         {
-          using (Process p = new())
+          using Process p = new();
+          p.StartInfo.FileName = termLaunchCmd
+            .Replace("{app}", app);
+          p.StartInfo.Arguments = termLaunchArgs
+            .Replace("{app}", app)
+            .Replace("{filePath}", $"\"{filePath}\"")
+            .Replace("{serverSocket}", s_ServerSocket)
+#if UNITY_EDITOR_WIN
+            .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
+#endif
+          ;
+          p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
+          p.StartInfo.CreateNoWindow = false;
+          p.StartInfo.UseShellExecute = true;  // has to be true on Windows (irrelevant on Linux)
+
+          // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
+
+          // start and do not care (do not wait for exit)
+          p.Start();
+
+#if UNITY_EDITOR_WIN
+
+          // save the server socket so that we can communicate with it later
+          // (e.g., when Unity exits but the server is still running)
+          s_Config.PrevServerSocket = s_ServerSocket;
+          s_Config.Save();
+
+          // the idea here is to figure out the handle of the process running the Neovim server instance
+          // this is a bit tricky on Windows - because depending on the terminal launch cmd, it might
+          // spawn a child process or it might not.
+          //
+          // first - we assume that the terminal launch cmd's process is the one that has Neovim server
+          // open (i.e., no child process)
+          int process_startup_timeout = 1000;
+          try
           {
-            p.StartInfo.FileName = termLaunchCmd
-              .Replace("{app}", app);
-            p.StartInfo.Arguments = termLaunchArgs
-              .Replace("{app}", app)
-              .Replace("{filePath}", $"\"{filePath}\"")
-              .Replace("{serverSocket}", s_ServerSocket)
-#if UNITY_EDITOR_WIN
-              .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
-#endif
-            ;
-            p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
-            p.StartInfo.CreateNoWindow = false;
-            p.StartInfo.UseShellExecute = true;  // has to be true on Windows (irrelevant on Linux)
-
-            // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
-
-            // start and do not care (do not wait for exit)
-            p.Start();
-
-#if UNITY_EDITOR_WIN
-
-            // save the server socket so that we can communicate with it later
-            // (e.g., when Unity exits but the server is still running)
-            EditorPrefs.SetString("NvimPrevServerSocket", s_ServerSocket);
-
-            // the idea here is to figure out the handle of the process running the Neovim server instance
-            // this is a bit tricky on Windows - because depending on the terminal launch cmd, it might
-            // spawn a child process or it might not.
-            //
-            // first - we assume that the terminal launch cmd's process is the one that has Neovim server
-            // open (i.e., no child process)
-            int process_startup_timeout = 1000;
-            try
-            {
-              IntPtr wh = ProcessUtils.GetWindowHandle(p, process_startup_timeout);
-              EditorPrefs.SetString("NvimPrevServerProcessIntPtrStringRepr", wh.ToString());
-            }
-            // this probably means that the terminal launch cmd spawns a new child instance that is responsible for the Neovim window
-            catch (InvalidOperationException)
-            {
-                // pipe's name should be the same as in "GetProcessPPID.ps1" script
-                using (var pipeClient = new NamedPipeClientStream(".", @"\\.\pipe\getprocessppidpipe", PipeDirection.In))
-                {
-                  pipeClient.Connect(1000);
-                  using (var _sr = new StreamReader(pipeClient))
-                  {
-                    string ppidStr = _sr.ReadLine();
-                    if (ppidStr == null)
-                      throw new Exception("PPID received string is null");
-
-                    var ppid = int.Parse(ppidStr);
-
-                    Process neovimServerProcess = Process.GetProcessById(ppid);
-                    IntPtr wh = ProcessUtils.GetWindowHandle(neovimServerProcess, process_startup_timeout);
-                    EditorPrefs.SetString("NvimPrevServerProcessIntPtrStringRepr", wh.ToString());
-                  }
-                }
-            } catch (Exception)
-            {
-                s_WindowFocusingAvailable = false;
-                Debug.LogWarning($"[neovim.ide] failed to get the PID of the window responsible for the Neovim server instance."
-                    + " Auto window focusing is disabled");
-            }
-#endif
+            IntPtr wh = ProcessUtils.GetWindowHandle(p, process_startup_timeout);
+            s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
+            s_Config.Save();
           }
+          // this probably means that the terminal launch cmd spawns a new child instance that is responsible for the Neovim window
+          catch (InvalidOperationException)
+          {
+            // pipe's name should be the same as in "GetProcessPPID.ps1" script
+            using var pipeClient = new NamedPipeClientStream(".", @"\\.\pipe\getprocessppidpipe", PipeDirection.In);
+            pipeClient.Connect(1000);
+            using var _sr = new StreamReader(pipeClient);
+            string ppidStr = _sr.ReadLine() ?? throw new Exception("PPID received string is null");
+            var ppid = int.Parse(ppidStr);
+
+            Process neovimServerProcess = Process.GetProcessById(ppid);
+            IntPtr wh = ProcessUtils.GetWindowHandle(neovimServerProcess, process_startup_timeout);
+            s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
+            s_Config.Save();
+          }
+          catch (Exception)
+          {
+            s_WindowFocusingAvailable = false;
+            Debug.LogWarning($"[neovim.ide] failed to get the PID of the window responsible for the Neovim server instance."
+                + " Auto window focusing is disabled");
+          }
+#endif
         }
         catch (Exception e)
         {
@@ -543,18 +597,19 @@ fi
 #if UNITY_EDITOR_WIN
       // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not available for socket type"
       // so we have to listen to a TCP socket instead with a local addr and a random port - this will be overwitten below
-      s_ServerSocket = EditorPrefs.GetString("NvimPrevServerSocket");
+      s_ServerSocket = s_Config.PrevServerSocket;
 #endif
 
       // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding to the provided filepath
       {
-        string args = EditorPrefs.GetString("NvimUnityOpenFileArgs")
+        string args = s_Config.OpenFileArgs
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{filePath}", $"\"{filePath}\"");
         try
         {
           ProcessUtils.RunProcessAndKillAfter(app, args, timeout: 50);
-        } catch (Exception e)
+        }
+        catch (Exception e)
         {
           Debug.LogWarning($"[neovim.ide] failed at sending request to Neovim server to open a file. cmd: {app} {args}. Reason: {e.Message}");
         }
@@ -564,7 +619,7 @@ fi
       // You can do them together in a terminal but not through C# :-|).
       if (line != 1 || column != 0)
       {
-        string args = EditorPrefs.GetString("NvimUnityJumpToCursorPositionArgs")
+        string args = s_Config.JumpToCursorPositionArgs
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{line}", line.ToString())
           .Replace("{column}", column.ToString());
@@ -619,7 +674,7 @@ fi
           break;
       }
 #else  // UNITY_EDITOR_WIN
-      IntPtr windowHandle = new (Convert.ToInt64(EditorPrefs.GetString("NvimPrevServerProcessIntPtrStringRepr")));
+      IntPtr windowHandle = new(Convert.ToInt64(s_Config.PrevServerProcessIntPtrStringRepr));
       ShowWindow(windowHandle, 5);  // 5 == Activates the window and displays it in its current size and position
       SetForegroundWindow(windowHandle);
 #endif
@@ -628,4 +683,3 @@ fi
     }
   }
 }
-#endif
