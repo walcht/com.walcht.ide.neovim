@@ -1,9 +1,7 @@
+#pragma warning disable IDE0130
 using System;
 using System.Diagnostics;
-using System.Threading.Tasks;
-using System.Threading;
 using System.Collections.Generic;
-using Debug = UnityEngine.Debug;
 
 namespace Neovim.Editor
 {
@@ -37,20 +35,18 @@ namespace Neovim.Editor
     /// </summary>
     public static void RunProcessAndKillAfter(string app, string args, int timeout = 500)
     {
-      using (Process p = new())
+      using Process p = new();
+      p.StartInfo.FileName = app;
+      p.StartInfo.Arguments = args;
+      p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+      p.StartInfo.CreateNoWindow = true;
+      p.StartInfo.UseShellExecute = false;
+
+      p.Start();
+
+      if (!p.WaitForExit(timeout))
       {
-        p.StartInfo.FileName = app;
-        p.StartInfo.Arguments = args;
-        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-        p.StartInfo.CreateNoWindow = true;
-        p.StartInfo.UseShellExecute = false;
-
-        p.Start();
-
-        if (!p.WaitForExit(timeout))
-        {
-          p.Kill();
-        }
+        p.Kill();
       }
     }
 
@@ -60,30 +56,28 @@ namespace Neovim.Editor
       bool success = false;
       try
       {
-        using (Process p = new())
-        {
+        using Process p = new();
 #if UNITY_EDITOR_LINUX
           string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
           p.StartInfo.FileName = Environment.GetEnvironmentVariable("SHELL");
           p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
 #else // UNITY_EDITOR_WIN
-          p.StartInfo.FileName = "cmd.exe";
-          p.StartInfo.Arguments = $"/C \"{cmd}\"";
+        p.StartInfo.FileName = "cmd.exe";
+        p.StartInfo.Arguments = $"/C \"{cmd}\"";
 #endif
-          p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-          p.StartInfo.CreateNoWindow = true;
-          p.StartInfo.UseShellExecute = false;
+        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+        p.StartInfo.CreateNoWindow = true;
+        p.StartInfo.UseShellExecute = false;
 
-          p.Start();
+        p.Start();
 
-          if (p.WaitForExit(timeout))
-          {
-            success = p.ExitCode == 0;
-          }
-          else
-          {
-            p.Kill();
-          }
+        if (p.WaitForExit(timeout))
+        {
+          success = p.ExitCode == 0;
+        }
+        else
+        {
+          p.Kill();
         }
       }
       catch (Exception) { }
@@ -96,28 +90,26 @@ namespace Neovim.Editor
       bool success = false;
       try
       {
-        using (Process p = new())
-        {
+        using Process p = new();
 #if UNITY_EDITOR_LINUX
           p.StartInfo.FileName = "which";
 #else  // UNITY_EDITOR_WIN
-          // the 'which' cmd equivalent in Windows is 'where.exe'
-          p.StartInfo.FileName = "where.exe";
+        // the 'which' cmd equivalent in Windows is 'where.exe'
+        p.StartInfo.FileName = "where.exe";
 #endif
-          p.StartInfo.Arguments = cmd;
-          p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-          p.StartInfo.CreateNoWindow = true;
-          p.StartInfo.UseShellExecute = false;
-          p.Start();
-          if (p.WaitForExit(timeout))
-          {
-            // which/where.exe returns 0 if the supplied cmd was found
-            success = p.ExitCode == 0;
-          }
-          else
-          {
-            p.Kill();
-          }
+        p.StartInfo.Arguments = cmd;
+        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+        p.StartInfo.CreateNoWindow = true;
+        p.StartInfo.UseShellExecute = false;
+        p.Start();
+        if (p.WaitForExit(timeout))
+        {
+          // which/where.exe returns 0 if the supplied cmd was found
+          success = p.ExitCode == 0;
+        }
+        else
+        {
+          p.Kill();
         }
       }
       catch (Exception) { }
@@ -133,40 +125,38 @@ namespace Neovim.Editor
       int lines_read = 0;
       try
       {
-        using (Process p = new())
-        {
+        using Process p = new();
 #if UNITY_EDITOR_LINUX
-          string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
-          p.StartInfo.FileName = Environment.GetEnvironmentVariable("SHELL");
-          p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
+        string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
+        p.StartInfo.FileName = Environment.GetEnvironmentVariable("SHELL");
+        p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
 #else // UNITY_EDITOR_WIN
-          p.StartInfo.FileName = "cmd.exe";
-          p.StartInfo.Arguments = $"/C {cmd}";
+        p.StartInfo.FileName = "cmd.exe";
+        p.StartInfo.Arguments = $"/C {cmd}";
 #endif
-          p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-          p.StartInfo.CreateNoWindow = true;
-          p.StartInfo.UseShellExecute = false;
-          p.StartInfo.RedirectStandardOutput = true;
+        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+        p.StartInfo.CreateNoWindow = true;
+        p.StartInfo.UseShellExecute = false;
+        p.StartInfo.RedirectStandardOutput = true;
 
-          p.Start();
-      
+        p.Start();
 
-          if (p.WaitForExit(timeout))
+
+        if (p.WaitForExit(timeout))
+        {
+          string line = null;
+          while (lines_read < max_nbr_lines &&
+              ((line = p.StandardOutput.ReadLine()) != null) &&
+              !string.IsNullOrWhiteSpace(line))
           {
-            string line = null;
-            while (lines_read < max_nbr_lines &&
-                ((line = p.StandardOutput.ReadLine()) != null) &&
-                !String.IsNullOrWhiteSpace(line))
-            {
-              lines.Add(line);
-              ++lines_read;
-            }
-            success = p.ExitCode == 0;
+            lines.Add(line);
+            ++lines_read;
           }
-          else
-          {
-            p.Kill();
-          }
+          success = p.ExitCode == 0;
+        }
+        else
+        {
+          p.Kill();
         }
       }
       catch (Exception) { }

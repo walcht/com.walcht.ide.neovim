@@ -1,14 +1,18 @@
 {
-  "name": "walcht.ide.neovim.Editor",
-  "rootNamespace": "Neovim.Editor",
-  "references": [],
-  "optionalUnityReferences": [],
-  "includePlatforms": [
-    "Editor"
-  ],
-  "excludePlatforms": [],
-  "allowUnsafeCode": true,
-  "overrideReferences": true,
-  "noEngineReferences": false,
-  "precompiledReferences": []
+    "name": "walcht.ide.neovim.Editor",
+    "rootNamespace": "Neovim.Editor",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
 }
