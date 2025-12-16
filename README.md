@@ -3,10 +3,27 @@
 Neovim integration with the Unity game engine. Inspired from the official Visual
 Studio editor IDE package: [com.unity.ide.visualstudio][com.unity.ide.visualstudio].
 
+> [!Important]
+> This package only supports **Unity >= 2022.3 LTS**. Support for older version
+> is not and will not be planned.
+
 ## Features
 
-- .csproj generation for LSP purposes
-- auto focusing on Neovim server instance window (currently only on Linux GNOME)
+- Cross-platform support (Linux and Windows 10/11 - MacOS is TODO)
+- `.csproj` generation for LSP purposes
+- Opening of a new-tab in the currently running Neovim server instance
+- Jumping to cursor position on the requested file in the currently running Neovim
+  server instance
+- Auto focusing on Neovim server instance window (on Linux, currently only on GNOME
+  and full support on Windows with Windows Terminal)
+- Fully customizable commands (terminal launch command, open-file arguments, and
+  jump-to-cursor position arguments)
+- Option to add custom analyzers to generated `.csproj` files (usefull for
+  `Microsoft.Unity.Analyzers`)
+- Persistent Neovim session (i.e., when you close the editor while a Neovim server
+  instance is running and then you open the same project again, the same instance
+  is used - persistency is achieved through:
+  ```EditorPrefs.SetString("NvimUnityConfigJson", configJson)```)
 
 ## Installation
 
@@ -40,7 +57,10 @@ Edit -> Preferences -> External Tools -> Set "External Script Editor" to Neovim
 -> Adjust which packages to generate the .csproj files for (you will only get
 LSP functionalities for those selected packages):
 
-<img width="521" height="258" alt="Unity's external tools menu" src="https://github.com/user-attachments/assets/42bc9118-8e38-4991-8c3d-036fb6b303bc" />
+<img width="961" height="336" alt="image" src="https://github.com/user-attachments/assets/8bcd00c4-923e-49fe-9823-37bce77e50f1" />
+
+You can also add a custom analyzer `.dll` through the `Browse` button. This is
+usefull for adding [Microsoft.Unity.Analyzers][unity-analyzers].
 
 ## Change Terminal Emulator Launch Command
 
@@ -184,6 +204,18 @@ lot of terminals out there, I cannot dedicate enough time to support all of
 them - please do open a PR in case you think your custom terminal launch
 command should be added/supported.
 
+## Known Issues
+
+- Issue: initial file opening successfully opens a new Neovim server instance but
+  subsequent file openings do not open a new tab.
+  
+  Solution: this is probably due to a low process timeout - go to the top menu,
+  `Neovim -> Change Process Timeout` and set it to something high (like 400ms).
+  If this solves the issue - then set it to something lower so that you do not
+  have to wait (2x400ms) for the Neovim server instance to open a new tab. This
+  is a limitation that is hard to circumvent because each hardware/OS may
+  execute cmd shell processes in different times.
+
 ## TODOs
 
 - [ ] automatically refresh and sync Unity project when Neovim changes/adds assets (CRUCIAL)
@@ -197,4 +229,5 @@ MIT License. Read `license.txt` file.
 [activate-window-by-title]: https://github.com/lucaswerkmeister/activate-window-by-title
 [unity-external-tools-menu]: https://raw.githubusercontent.com/walcht/walcht/refs/heads/master/images/unity-external-tools.png
 [unity-asmdef]: https://docs.unity3d.com/6000.2/Documentation/Manual/cus-asmdef.html
+[unity-analyzers]: https://github.com/microsoft/Microsoft.Unity.Analyzers/releases
 [wt]: https://github.com/microsoft/terminal
