@@ -4,7 +4,7 @@ Neovim integration with the Unity game engine. Inspired from the official Visual
 Studio editor IDE package: [com.unity.ide.visualstudio][com.unity.ide.visualstudio].
 
 > [!Important]
-> This package only supports **Unity >= 2022.3 LTS**. Support for older version
+> This package only supports **Unity >= 2022.3 LTS**. Support for older versions
 > is not and will not be planned.
 
 ## Features
