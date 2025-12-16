@@ -13,6 +13,17 @@ namespace Neovim.Editor
   {
     private bool m_Dirty = false;
 
+    private int m_ProcessTimeout = 150;
+    public int ProcessTimeout {
+      get => m_ProcessTimeout;
+      set {
+        if (value == m_ProcessTimeout)
+          return;
+        m_ProcessTimeout = value;
+        m_Dirty = true;
+      }
+    }
+
     private string m_TermLaunchCmd;
     public string TermLaunchCmd
     {

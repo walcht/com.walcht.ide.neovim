@@ -612,7 +612,7 @@ fi
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{filePath}", $"\"{filePath}\"");
 
-        ProcessUtils.RunShellCmd($"{app} {args}", timeout: 50);
+        ProcessUtils.RunShellCmd($"{app} {args}", timeout: s_Config.ProcessTimeout);
       }
 
       /*
@@ -627,7 +627,7 @@ fi
           .Replace("{line}", line.ToString())
           .Replace("{column}", column.ToString());
 
-        ProcessUtils.RunShellCmd($"{app} {args}", timeout: 50);
+        ProcessUtils.RunShellCmd($"{app} {args}", timeout: s_Config.ProcessTimeout);
       }
 
       // optionally focus on Neovim - this is extremely tricky to implement across platforms
@@ -640,7 +640,7 @@ fi
         case LinuxDesktopEnvironment.X11:
           {
             string cmd = @"wmctrl -a nvimunity";
-            if (!ProcessUtils.RunShellCmd(cmd))
+            if (!ProcessUtils.RunShellCmd(cmd, timeout: s_Config.ProcessTimeout))
             {
               Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
                   + $"Failed to execute the cmd: '{cmd}'");
@@ -653,7 +653,7 @@ fi
             string cmd = @"gdbus call --session --dest org.gnome.Shell \
 --object-path /de/lucaswerkmeister/ActivateWindowByTitle \
 --method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring 'nvimunity'";
-            if (!ProcessUtils.RunShellCmd(cmd))
+            if (!ProcessUtils.RunShellCmd(cmd, timeout: s_Config.ProcessTimeout))
             {
               Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
                   + "Did you logout and login of your GNOME session?\n"
