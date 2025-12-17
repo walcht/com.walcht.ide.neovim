@@ -52,6 +52,10 @@ environments.
 Make sure that **Neovim > 0.11** is installed and is globally accessible (i.e.,
 added to PATH under the name "nvim")
 
+> [!Important]
+> On Linux, `nvim` has to be added on PATH for non-interactive shells - that is,
+> it has to appended to PATH in `~/.profile` and NOT `~/.bashrc`.
+
 To automatically open Neovim when clicking on files/console warnings or errors,
 Edit -> Preferences -> External Tools -> Set "External Script Editor" to Neovim
 -> Adjust which packages to generate the .csproj files for (you will only get
