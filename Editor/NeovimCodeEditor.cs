@@ -100,6 +100,7 @@ namespace Neovim.Editor
       ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
       ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
       ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocket}"),
+      ("ghostty", "--title=\"nvimunity\" --command='{app} {filePath} --listen {serverSocket}'"),
     };
 #else  // UNITY_EDITOR_WIN
     {
