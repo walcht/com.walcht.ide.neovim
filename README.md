@@ -75,7 +75,7 @@ to use for launching a new Neovim server instance then you can do so via the
 top menu option in the Unity Editor: `Neovim -> Change Terminal Launch Cmd` which
 will show the following popup:
 
-<img width="605" height="262" alt="image" src="https://github.com/user-attachments/assets/a3cb103a-2c11-4435-9f16-330671bdbcd7" />
+<img width="1130" height="309" alt="image" src="https://github.com/user-attachments/assets/9646d85b-c14c-4565-b60f-6c522fb95ce4" />
 
 Where:
 - `{app}` -- is replaced by the current editor path (i.e., neovim path).
@@ -94,6 +94,10 @@ This, for instance, instructs gnome-terminal to name the newly opened window as
 when opening a file from Unity. Change this according to your terminal emulator
 but keep the new window name as `nvimunity`.
 
+You can also optionally pass a set of environment variables as such:
+`ENV_0=VALUE_0 ENV_1=VALUE_1 ... ENV_N=VALUE_N` (i.e., a space-separated list
+of '=' separated environment-variable-name and value sets).
+
 ## Change Open-File Request Args
 
 By default this package uses `--server {serverSocket} --remote-tab {filePath}`
@@ -103,7 +107,7 @@ executable path (i.e., Neovim path)). You can change this by using the top
 menu option in the Unity Editor: `Neovim -> Change Open-File Request Args`
 which will show the following popup:
 
-<img width="607" height="237" alt="image" src="https://github.com/user-attachments/assets/5f056048-a34c-4f70-9e07-b64e6d5f9287" />
+<img width="999" height="283" alt="image" src="https://github.com/user-attachments/assets/31cf85cf-deef-4fd2-8c35-468be67d8f15" />
 
 Where:
 - `{filePath}` -- is replaced by the path to the requested file to be opened by
@@ -123,7 +127,7 @@ instantiated. You can change this by using the top menu option in the Unity
 Editor: `Neovim -> Change Jump-to-Cursor-Position Args` which will show the
 following popup:
 
-<img width="606" height="238" alt="image" src="https://github.com/user-attachments/assets/e1dc2a78-002a-4061-bb23-71b9fdb459d4" />
+<img width="990" height="282" alt="image" src="https://github.com/user-attachments/assets/80455f86-a3c1-4e4f-8fad-e11ad49c82e4" />
 
 Where:
 - `{serverSocket}` -- is replaced by the path to the IPC socket between
@@ -133,6 +137,15 @@ Where:
   available port).
 - `{line}` -- is replaced by the line number that was requested to jump into.
 - `{column}` -- is replaced by the column number that was requested to jump into.
+
+## Change Process Timeout
+
+You can also optionally change the process timeout (i.e., the time that this plugin
+waits for a process to launch - in case it does not launch within this timeout, it
+will be killed). Set this higher in case you are experiencing some issues especially
+with opening-a-new-file or jumping-to-cursor-position requests.
+
+<img width="500" height="258" alt="image" src="https://github.com/user-attachments/assets/121eacb9-aac0-4eec-85b3-4818e51065da" />
 
 ## LSP is Not Working for a Particular Package?
 
