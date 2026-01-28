@@ -105,8 +105,8 @@ namespace Neovim.Editor
 #else  // UNITY_EDITOR_WIN
     {
       // on Powershell, replace the ';' with "`;"
-      ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}", ""),
-      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}", ""),
+      ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}", "{environment}"),
+      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}", "{environment}")
     };
 #endif
 
@@ -545,26 +545,26 @@ fi
 #endif
           ;
 
-#if UNITY_EDITOR_LINUX
+          // pass optionally-set environment variables to process
           if (!string.IsNullOrWhiteSpace(termLaunchEnv) && !termLaunchEnv.Contains("{environment}"))
           {
-
             foreach (var env in termLaunchEnv.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             {
               var envKey = env.Split('=', 2);
               if (envKey.Length == 2)
+              {
                 p.StartInfo.Environment[envKey[0]] = envKey[1];
+              }
+              else
+              {
+                Debug.LogWarning($"[neovim.ide] failed to parse environment variable entry from: {env}. Expected format is: ENV=VALUE");
+              }
             }
-
           }
-#endif
 
           p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
           p.StartInfo.CreateNoWindow = false;
-          p.StartInfo.UseShellExecute = false;  // allow Environment to be pass on linux
-#if UNITY_EDITOR_WIN
-          p.StartInfo.UseShellExecute = true;  // has to be true on Windows
-#endif
+          p.StartInfo.UseShellExecute = false;
           // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
 
           // start and do not care (do not wait for exit)

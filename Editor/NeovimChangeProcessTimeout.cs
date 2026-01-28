@@ -14,18 +14,24 @@ namespace Neovim.Editor
     {
       var window = GetWindow<NeovimChangeProcessTimeout>(true, "Change Process Timeout");
       window.position = new Rect(Screen.width / 2, Screen.height / 2, 600, 225);
-      window.minSize = new Vector2(500, 125);
+      window.minSize = new Vector2(500, 225);
       window.ShowModalUtility();
     }
 
     // CreateGUI is called when the EditorWindow's rootVisualElement is ready to be populated.
     private void CreateGUI()
     {
-      var label = new Label();
-      label.text = "Change process timeout (ms):";
+      var label = new Label()
+      {
+        text = "Change process timeout (ms):"
+      };
 
-      var intField = new IntegerField();
-      intField.value = NeovimCodeEditor.s_Config.ProcessTimeout;
+      var intField = new IntegerField()
+      {
+        label = "timeout (ms)",
+        tooltip = "Process timeout afterwhich the process is killed. Read below for further details.",
+        value = NeovimCodeEditor.s_Config.ProcessTimeout
+      };
 
       var msgField = new TextField
       {
@@ -47,7 +53,8 @@ namespace Neovim.Editor
         + "process being killed before it finishes its execution.";
 
       var updateBtn = new Button() { text = "Update Timeout" };
-      updateBtn.clicked += () => {
+      updateBtn.clicked += () =>
+      {
         if (intField.value <= 0)
         {
           msgField.value += "[ERROR] cannot set a 0 timeout value (infinite timeout will freeze the Unity Editor)";
