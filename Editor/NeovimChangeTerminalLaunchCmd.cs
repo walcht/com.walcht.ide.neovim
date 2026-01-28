@@ -23,11 +23,13 @@ namespace Neovim.Editor
     {
       string currentTermLaunchCmd = NeovimCodeEditor.s_Config.TermLaunchCmd;
       string currentTermLaunchArgs = NeovimCodeEditor.s_Config.TermLaunchArgs;
+      string currentTermLaunchEnv = NeovimCodeEditor.s_Config.TermLaunchEnv;
 
       var label = new Label();
 
       var termLaunchCmdField = new TextField();
       var termLaunchArgsField = new TextField();
+      var termLaunchEnvField = new TextField();
       var termLaunchTemplates = new DropdownField(NeovimCodeEditor.s_TermLaunchCmds
           .Select((cmdargs, _) => cmdargs.Item1).ToList(), 0);
       termLaunchTemplates.SetValueWithoutNotify("select template");
@@ -36,14 +38,16 @@ namespace Neovim.Editor
 
       if (currentTermLaunchCmd == null)
       {
-        (string templateCmd, string templateArgs) = NeovimCodeEditor.s_TermLaunchCmdTemplate;
+        (string templateCmd, string templateArgs, string templateEnv) = NeovimCodeEditor.s_TermLaunchCmdTemplate;
         termLaunchCmdField.value = templateCmd;
         termLaunchArgsField.value = templateArgs;
+        termLaunchEnvField.value = templateEnv;
       }
       else
       {
         termLaunchCmdField.value = currentTermLaunchCmd;
         termLaunchArgsField.value = currentTermLaunchArgs;
+        termLaunchEnvField.value = currentTermLaunchEnv;
       }
 
       var msgField = new TextField
@@ -63,29 +67,33 @@ namespace Neovim.Editor
 #if UNITY_EDITOR_WIN
         + "{getProcessPPIDScriptPath} - is replaced by the path to the GetProcessPPID.ps1 Powershell script which is used to determine the parent process ID which is then used for auto window focusing.\n"
 #endif
-        + "{serverSocket} - is replaced by the socket that is used to communicate with the Neovim server instance (TCP socket on Windows and Unix Domain socket path on Linux).\n\n";
+        + "{serverSocket} - is replaced by the socket that is used to communicate with the Neovim server instance (TCP socket on Windows and Unix Domain socket path on Linux).\n"
+        + "{environment} - is empty by default (linux only).\n\n";
 
       var updateBtn = new Button() { text = "Update" };
-      updateBtn.clicked += () => OnAddTermLaunchCmd(termLaunchCmdField, termLaunchArgsField, msgField);
+      updateBtn.clicked += () => OnAddTermLaunchCmd(termLaunchCmdField, termLaunchArgsField, termLaunchEnvField, msgField);
       termLaunchTemplates.RegisterValueChangedCallback(e =>
       {
         string cmd = e.newValue;
         string args = NeovimCodeEditor.s_TermLaunchCmds.First(cmdargs => cmdargs.Item1 == cmd).Item2;
+        string env = NeovimCodeEditor.s_TermLaunchCmds.First(cmdargs => cmdargs.Item1 == cmd).Item3;
         termLaunchCmdField.value = cmd;
         termLaunchArgsField.value = args;
+        termLaunchEnvField.value = env;
       });
 
       rootVisualElement.Add(label);
       rootVisualElement.Add(termLaunchTemplates);
       rootVisualElement.Add(termLaunchCmdField);
       rootVisualElement.Add(termLaunchArgsField);
+      rootVisualElement.Add(termLaunchEnvField);
       rootVisualElement.Add(updateBtn);
       rootVisualElement.Add(msgField);
     }
 
-    private void OnAddTermLaunchCmd(TextField termLaunchCmd, TextField termLaunchArgs, TextField msgField)
+    private void OnAddTermLaunchCmd(TextField termLaunchCmd, TextField termLaunchArgs, TextField termLaunchEnv, TextField msgField)
     {
-      if (!NeovimCodeEditor.TryChangeTermLaunchCmd((termLaunchCmd.value, termLaunchArgs.value)))
+      if (!NeovimCodeEditor.TryChangeTermLaunchCmd((termLaunchCmd.value, termLaunchArgs.value, termLaunchEnv.value)))
       {
         msgField.value += "[ERROR] provided terminal is not available\n"
           + $"[ERROR] 'which {termLaunchCmd.value}' returned !=0 value\n";

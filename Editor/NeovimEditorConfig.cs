@@ -14,9 +14,11 @@ namespace Neovim.Editor
     private bool m_Dirty = false;
 
     private int m_ProcessTimeout = 150;
-    public int ProcessTimeout {
+    public int ProcessTimeout
+    {
       get => m_ProcessTimeout;
-      set {
+      set
+      {
         if (value == m_ProcessTimeout)
           return;
         m_ProcessTimeout = value;
@@ -46,6 +48,19 @@ namespace Neovim.Editor
         if (value == m_TermLaunchArgs)
           return;
         m_TermLaunchArgs = value;
+        m_Dirty = true;
+      }
+    }
+
+    private string m_TermLaunchEnv;
+    public string TermLaunchEnv
+    {
+      get => m_TermLaunchEnv;
+      set
+      {
+        if (value == m_TermLaunchEnv)
+          return;
+        m_TermLaunchEnv = value;
         m_Dirty = true;
       }
     }

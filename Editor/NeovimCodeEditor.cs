@@ -88,25 +88,25 @@ namespace Neovim.Editor
 #endif
 
     // terminal launch command template - use this template for adding new launch cmds
-    public static readonly (string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}");
+    public static readonly (string, string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}", "{environment}");
 
     // list of neovim launch cmds from popular terminal emulators - this is
     // just a hardcoded list so that non-tech-savy users can just get to
     // using Neovim with minimal friction.
-    public static readonly (string, string)[] s_TermLaunchCmds =
+    public static readonly (string, string, string)[] s_TermLaunchCmds =
 #if UNITY_EDITOR_LINUX
     {
-      ("gnome-terminal", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
-      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
-      ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}"),
-      ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocket}"),
-      ("ghostty", "--title=\"nvimunity\" --command='{app} {filePath} --listen {serverSocket}'"),
+      ("gnome-terminal", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("ghostty", "--title=\"nvimunity\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
     };
 #else  // UNITY_EDITOR_WIN
     {
       // on Powershell, replace the ';' with "`;"
-      ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}"),
-      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}"),
+      ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}", ""),
+      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}", ""),
     };
 #endif
 
@@ -139,6 +139,7 @@ namespace Neovim.Editor
       // get terminal launch cmd and its args from Unity editor preferences
       string termLaunchCmd = s_Config.TermLaunchCmd;
       string termLaunchArgs = s_Config.TermLaunchArgs;
+      string termLaunchEnv = s_Config.TermLaunchEnv;
 
       // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
       if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
@@ -301,9 +302,9 @@ fi
     }
 #endif
 
-    public static bool TryChangeTermLaunchCmd((string, string) termLaunch)
+    public static bool TryChangeTermLaunchCmd((string, string, string) termLaunch)
     {
-      (string cmd, string args) = termLaunch;
+      (string cmd, string args, string env) = termLaunch;
 
       if (cmd.Contains("{app}"))  // in case the Neovim executable is invoked directly
       {
@@ -320,6 +321,7 @@ fi
       // serialize the new terminal launch command in Unity Editor's preferences settings
       s_Config.TermLaunchCmd = cmd;
       s_Config.TermLaunchArgs = args;
+      s_Config.TermLaunchEnv = env;
 
 #if UNITY_EDITOR_WIN
       s_Config.PrevServerSocket = null;
@@ -519,6 +521,7 @@ fi
       // get terminal launch cmd and its args from Unity editor preferences
       string termLaunchCmd = s_Config.TermLaunchCmd;
       string termLaunchArgs = s_Config.TermLaunchArgs;
+      string termLaunchEnv = s_Config.TermLaunchEnv;
 
       if (!IsNvimServerInstanceAlreadyRunning())
       {
@@ -541,10 +544,27 @@ fi
             .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
 #endif
           ;
+
+#if UNITY_EDITOR_LINUX
+          if (!string.IsNullOrWhiteSpace(termLaunchEnv) && !termLaunchEnv.Contains("{environment}"))
+          {
+
+            foreach (var env in termLaunchEnv.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+              var envKey = env.Split('=', 2);
+              if (envKey.Length == 2)
+                p.StartInfo.Environment[envKey[0]] = envKey[1];
+            }
+
+          }
+#endif
+
           p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
           p.StartInfo.CreateNoWindow = false;
-          p.StartInfo.UseShellExecute = true;  // has to be true on Windows (irrelevant on Linux)
-
+          p.StartInfo.UseShellExecute = false;  // allow Environment to be pass on linux
+#if UNITY_EDITOR_WIN
+          p.StartInfo.UseShellExecute = true;  // has to be true on Windows
+#endif
           // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
 
           // start and do not care (do not wait for exit)
