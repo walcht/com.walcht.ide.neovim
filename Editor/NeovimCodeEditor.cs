@@ -139,6 +139,7 @@ namespace Neovim.Editor
       // get terminal launch cmd and its args from Unity editor preferences
       string termLaunchCmd = s_Config.TermLaunchCmd;
       string termLaunchArgs = s_Config.TermLaunchArgs;
+      string termLaunchEnv = s_Config.TermLaunchEnv;
 
       // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
       if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
@@ -564,7 +565,6 @@ fi
           p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
           p.StartInfo.CreateNoWindow = false;
           p.StartInfo.UseShellExecute = false;
-
           // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
 
           // start and do not care (do not wait for exit)
