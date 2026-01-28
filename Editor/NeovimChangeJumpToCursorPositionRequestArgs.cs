@@ -13,8 +13,8 @@ namespace Neovim.Editor
     static void Init()
     {
       var window = GetWindow<NeovimChangeJumpToCursorPositionRequestArgs>(true, "Change Jump-to-Cursor-Position Request Args");
-      window.position = new Rect(Screen.width / 2, Screen.height / 2, 600, 200);
-      window.minSize = new Vector2(500, 125);
+      window.position = new Rect(Screen.width / 2, Screen.height / 2, 600, 250);
+      window.minSize = new Vector2(500, 250);
       window.ShowModalUtility();
     }
 
@@ -25,7 +25,12 @@ namespace Neovim.Editor
 
       var label = new Label();
 
-      var args_field = new TextField();
+      var args_field = new TextField()
+      {
+        label = "arguments",
+        tooltip = "Arguments to be passed to NeoVim when a cursor position jump to particular file is requested. "
+          + "Text between {} if for special placeholders (read below)."
+      };
       var templates_dd = new DropdownField(NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates.ToList(), 0);
       templates_dd.SetValueWithoutNotify("select template");
 
