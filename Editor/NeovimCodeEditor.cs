@@ -38,8 +38,19 @@ namespace Neovim.Editor
     ///   error message in console, etc).
     ///   First entry is the default.
     /// </summary>
-    public static readonly string[] s_OpenFileArgsTemplates = {
-      "--server {serverSocket} --remote-tab {filePath}",
+    public static readonly (string Args, string Name, string Desc)[] s_OpenFileArgsTemplates = {
+      ("--server {serverSocket} --remote-send \":drop {filePath}<CR>\"",
+       "Open (reuse window)",
+       "Opens in current window. If file is already open somewhere — switches to it. No new tabs."),
+      ("--server {serverSocket} --remote-tab {filePath}",
+       "Open in new tab",
+       "Always opens the file in a new Neovim tab page."),
+      ("--server {serverSocket} --remote-send \":vsplit {filePath}<CR>\"",
+       "Vertical split",
+       "Opens the file in a vertical split of the current window."),
+      ("--server {serverSocket} --remote-send \":split {filePath}<CR>\"",
+       "Horizontal split",
+       "Opens the file in a horizontal split of the current window."),
     };
 
     /// <summary>
@@ -165,15 +176,24 @@ namespace Neovim.Editor
         }
       }
 
-      if (string.IsNullOrWhiteSpace(s_Config.OpenFileArgs))
+      // migrate legacy single OpenFileArgs → ModifierBindings
+      if (!s_Config.ModifierBindings.Any() && !string.IsNullOrWhiteSpace(s_Config.OpenFileArgs))
+      {
+        s_Config.ModifierBindings.Add(new ModifierBinding { Modifiers = 0, Args = s_Config.OpenFileArgs });
+        s_Config.SetDirty(true);
+      }
+
+      if (!s_Config.ModifierBindings.Any())
       {
         if (!s_OpenFileArgsTemplates.Any())
         {
           Debug.LogError($"[neovim.ide] open-file template list is empty");
         }
-        s_Config.OpenFileArgs = s_OpenFileArgsTemplates[0];
-        s_Config.Save();
+        s_Config.ModifierBindings = new System.Collections.Generic.List<ModifierBinding> {
+          new ModifierBinding { Modifiers = 0, Args = s_OpenFileArgsTemplates[0].Args }
+        };
       }
+      s_Config.Save();
 
       if (string.IsNullOrWhiteSpace(s_Config.JumpToCursorPositionArgs))
       {
@@ -629,11 +649,21 @@ fi
       // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding
       // to the provided filepath
       {
-        string args = s_Config.OpenFileArgs
+        int currentMods = Event.current != null ? (int)Event.current.modifiers : 0;
+        const int relevantMask = (int)(EventModifiers.Shift | EventModifiers.Control | EventModifiers.Alt);
+        currentMods &= relevantMask;
+
+        var binding = s_Config.ModifierBindings
+          .FirstOrDefault(b => (b.Modifiers & relevantMask) == currentMods)
+          ?? s_Config.ModifierBindings.FirstOrDefault(b => b.Modifiers == 0);
+
+        string openFileArgs = binding?.Args ?? s_OpenFileArgsTemplates[0].Args;
+
+        string args = openFileArgs
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{filePath}", $"\"{filePath}\"");
 
-        ProcessUtils.RunShellCmd($"{app} {args}", timeout: s_Config.ProcessTimeout);
+        ProcessUtils.RunProcessAndKillAfter(app, args, timeout: s_Config.ProcessTimeout);
       }
 
       /*
@@ -648,7 +678,7 @@ fi
           .Replace("{line}", line.ToString())
           .Replace("{column}", column.ToString());
 
-        ProcessUtils.RunShellCmd($"{app} {args}", timeout: s_Config.ProcessTimeout);
+        ProcessUtils.RunProcessAndKillAfter(app, args, timeout: s_Config.ProcessTimeout);
       }
 
       // optionally focus on Neovim - this is extremely tricky to implement across platforms

@@ -9,6 +9,13 @@ using Newtonsoft.Json;
 namespace Neovim.Editor
 {
   [Serializable]
+  public class ModifierBinding
+  {
+    public int Modifiers;   // EventModifiers cast to int (0 = no modifier = default)
+    public string Args;
+  }
+
+  [Serializable]
   public class NeovimEditorConfig
   {
     private bool m_Dirty = false;
@@ -74,6 +81,17 @@ namespace Neovim.Editor
         if (value == m_OpenFileArgs)
           return;
         m_OpenFileArgs = value;
+        m_Dirty = true;
+      }
+    }
+
+    private List<ModifierBinding> m_ModifierBindings = new();
+    public List<ModifierBinding> ModifierBindings
+    {
+      get => m_ModifierBindings;
+      set
+      {
+        m_ModifierBindings = value;
         m_Dirty = true;
       }
     }
