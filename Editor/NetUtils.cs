@@ -16,7 +16,7 @@ namespace Neovim.Editor
       return ((IPEndPoint)socket.LocalEndPoint).Port;
     }
 
-#if UNITY_EDITOR_LINUX
+#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
     public static bool IsUnixSocketAlive(string path)
     {
       if (!File.Exists(path)) return false;
@@ -33,7 +33,7 @@ namespace Neovim.Editor
         return false;
       }
     }
-#endif
+#endif // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
 
     public static bool IsPortInUse(string ip, int port)
     {

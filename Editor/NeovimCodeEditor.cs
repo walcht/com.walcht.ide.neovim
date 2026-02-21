@@ -24,7 +24,7 @@ namespace Neovim.Editor
 
     public static NeovimEditorConfig s_Config = new();
 
-#if UNITY_EDITOR_LINUX
+#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
     static string s_ServerSocket = "/tmp/nvimsocket";
 #else // UNITY_EDITOR_WIN
     // this will be initialized to some "127.0.0.1:<random-port>" because Unix domain sockets on Windows are a bitch
@@ -491,9 +491,9 @@ fi
 
     public bool IsNvimServerInstanceAlreadyRunning()
     {
-#if UNITY_EDITOR_LINUX
-      // On Linux we connect to the domain socket rather than checking file existence — a stale
-      // socket file is left behind when Neovim crashes, which would otherwise cause a false positive.
+#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      // Connect to the domain socket rather than checking file existence — a stale socket file is
+      // left behind when Neovim crashes, which would otherwise cause a false positive.
       // IsUnixSocketAlive also deletes the file if the socket is stale.
       return NetUtils.IsUnixSocketAlive(s_ServerSocket);
 #else  // UNITY_EDITOR_WIN
