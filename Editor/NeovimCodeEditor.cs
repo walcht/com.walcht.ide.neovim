@@ -492,9 +492,10 @@ fi
     public bool IsNvimServerInstanceAlreadyRunning()
     {
 #if UNITY_EDITOR_LINUX
-      // On Linux, since we use domain sockets, we can rely on the existence of the socket to know whether there
-      // is an already running nvim server instance
-      return File.Exists(s_ServerSocket);
+      // On Linux we connect to the domain socket rather than checking file existence — a stale
+      // socket file is left behind when Neovim crashes, which would otherwise cause a false positive.
+      // IsUnixSocketAlive also deletes the file if the socket is stale.
+      return NetUtils.IsUnixSocketAlive(s_ServerSocket);
 #else  // UNITY_EDITOR_WIN
       // this is tricky... using PIDs did not work... domain sockets have an issue on the side of NeoVim...
       // since on Windows we use a randomly available port for the TCP NeoVim server socket, we can know
