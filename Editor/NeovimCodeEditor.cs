@@ -209,21 +209,27 @@ namespace Neovim.Editor
       InitConfig();
 
       // initialize the discovered Neovim installations array
+      // TODO: ideally, we just check for nvim on path rather than assuming installation paths
       s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
-        .Where(p => File.Exists(p) || ProcessUtils.CheckCmdExistence($"\"{p}\""))
-        .Select((p, _) =>
+        .Select(p => p = Path.IsPathRooted(p) ? p : ProcessUtils.CmdPath(p))
+        .Where(p => p != null && File.Exists(p))
+        .Select(p =>
         {
           // get Neovim installation version
           string version = "v-unknown";
-          ProcessUtils.GetCmdStdOutput($"\"{p}\" --version", out List<string> output_lines);
-          if (output_lines.Any() && !string.IsNullOrWhiteSpace(output_lines[0]))
+          using var proc = ProcessUtils.HeadlessProcess();
+          proc.StartInfo.FileName = p;
+          proc.StartInfo.Arguments = "--version";
+          proc.RunWithAssertion(500, 0);
+          var line = proc.StandardOutput.ReadLine();
+          if (line != null)
           {
-            version = output_lines[0][(output_lines[0].IndexOf(' ') + 1)..];
+            version = line[(line.IndexOf(' ') + 1)..];
           }
           return new CodeEditor.Installation
           {
             Name = $"Neovim {version}",
-            Path = Path.GetFullPath(p),
+            Path = p,
           };
         })
         .ToArray();
@@ -240,7 +246,7 @@ namespace Neovim.Editor
 
       if (s_LinuxPlatform == LinuxDesktopEnvironment.X11)
       {
-        if (!ProcessUtils.CheckCmdExistence("wmctrl"))
+        if (ProcessUtils.CmdPath("wmctrl") == null)
         {
           Debug.LogWarning("[neovim.ide] neovim window focusing feature is not available \n"
               + "Reason: cmd 'wmctrl' is not available. Please install 'wmctrl' for window focusing capability.");
@@ -254,15 +260,34 @@ namespace Neovim.Editor
       {
         // this prompts the user to install a GNOME extension to focus on a window by title
         // there is unfortunately no other way to do this on GNOME under Wayland :/
-        if (!ProcessUtils.RunShellCmd(@"
-UUID=activate-window-by-title@lucaswerkmeister.de
-if ! gnome-extensions list | grep --quiet $UUID; then
-  busctl --user call org.gnome.Shell.Extensions /org/gnome/Shell/Extensions org.gnome.Shell.Extensions InstallRemoteExtension s $UUID
-fi
-", timeout: 10000))
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = "gnome-extensions";
+        p.StartInfo.Arguments = "list";
+        p.RunWithAssertion(s_Config.ProcessTimeout, 0);
+        const string uuid = "activate-window-by-title@lucaswerkmeister.de";
+        var foundExtension = false;
+        while (true)
         {
-          Debug.LogWarning("[neovim.ide] neovim window focusing feature is not available \n"
-              + "Reason: failed to install GNOME extension: activate-window-by-title@lucaswerkmeister.de");
+          var line = p.StandardOutput.ReadLine();
+          if (line == null) break;
+          if (line.Contains(uuid))
+          {
+            foundExtension = true;
+            break;
+          }
+        }
+        using var p2 = ProcessUtils.HeadlessProcess();
+        p2.StartInfo.FileName = "busctl";
+        p2.StartInfo.Arguments = $"--user call org.gnome.Shell.Extensions /org/gnome/Shell/Extensions org.gnome.Shell.Extensions InstallRemoteExtension s {uuid}";
+        p2.Start();
+        const string error = "[neovim.ide] neovim window focusing feature is not available\n"
+            + "Reason: failed to install GNOME extension: activate-window-by-title@lucaswerkmeister.de\n";
+        if (!p2.WaitForExit(10000))
+        {
+          Debug.LogWarning($"{error}Reason: timed out after 10 seconds");
+        } else if (p2.ExitCode != 0)
+        {
+          Debug.LogWarning($"{error}Reason: non-zero exit code ({p2.ExitCode})");
         }
         else
         {
@@ -314,7 +339,7 @@ fi
       }
       else  // or through terminal
       {
-        if (!ProcessUtils.CheckCmdExistence(cmd))
+        if (ProcessUtils.CmdPath(cmd) == null)
           return false;
       }
 
@@ -633,7 +658,10 @@ fi
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{filePath}", $"\"{filePath}\"");
 
-        ProcessUtils.RunShellCmd($"{app} {args}", timeout: s_Config.ProcessTimeout);
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = app;
+        p.StartInfo.Arguments = args;
+        p.RunWithAssertion(s_Config.ProcessTimeout, 0);
       }
 
       /*
@@ -648,7 +676,10 @@ fi
           .Replace("{line}", line.ToString())
           .Replace("{column}", column.ToString());
 
-        ProcessUtils.RunShellCmd($"{app} {args}", timeout: s_Config.ProcessTimeout);
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = app;
+        p.StartInfo.Arguments = args;
+        p.RunWithAssertion(s_Config.ProcessTimeout, 0);
       }
 
       // optionally focus on Neovim - this is extremely tricky to implement across platforms
@@ -661,24 +692,38 @@ fi
         case LinuxDesktopEnvironment.X11:
           {
             string cmd = @"wmctrl -a nvimunity";
-            if (!ProcessUtils.RunShellCmd(cmd, timeout: s_Config.ProcessTimeout))
+            using var p = ProcessUtils.HeadlessProcess();
+            p.StartInfo.FileName = "wmctrl";
+            p.StartInfo.Arguments = "-a nvimunity";
+            p.Start();
+            var error = $"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\nReason: cmd `{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}` failed\n";
+            if (!p.WaitForExit(s_Config.ProcessTimeout))
             {
-              Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
-                  + $"Failed to execute the cmd: '{cmd}'");
+              Debug.LogWarning($"{error}Reason: timed out after {s_Config.ProcessTimeout} milliseconds");
+            } else if (p.ExitCode != 0)
+            {
+              Debug.LogWarning($"{error}Reason: non-zero exit code ({p.ExitCode})");
             }
             break;
           }
         case LinuxDesktopEnvironment.GNOME:
           {
             // a clusterfuck of a mess - TODO: learn gdbus and clean this shit up somehow
-            string cmd = @"gdbus call --session --dest org.gnome.Shell \
+            using var p = ProcessUtils.HeadlessProcess();
+            p.StartInfo.FileName = "gdbus";
+            p.StartInfo.Arguments = @"call --session --dest org.gnome.Shell \
 --object-path /de/lucaswerkmeister/ActivateWindowByTitle \
 --method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring 'nvimunity'";
-            if (!ProcessUtils.RunShellCmd(cmd, timeout: s_Config.ProcessTimeout))
-            {
-              Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+            p.Start();
+            const string error = "[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
                   + "Did you logout and login of your GNOME session?\n"
-                  + "Did you install the 'activate-window-by-title@lucaswerkmeister.de' GNOME extension?");
+                  + "Did you install the 'activate-window-by-title@lucaswerkmeister.de' GNOME extension?";
+            if (!p.WaitForExit(s_Config.ProcessTimeout))
+            {
+              Debug.LogWarning($"{error}Reason: timed out after {s_Config.ProcessTimeout} milliseconds");
+            } else if (p.ExitCode != 0)
+            {
+              Debug.LogWarning($"{error}Reason: non-zero exit code ({p.ExitCode})");
             }
           }
           break;
