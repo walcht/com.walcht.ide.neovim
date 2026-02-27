@@ -2,7 +2,6 @@
 using System;
 using System.IO;
 using System.Diagnostics;
-using System.Collections.Generic;
 
 namespace Neovim.Editor
 {
@@ -35,28 +34,28 @@ namespace Neovim.Editor
 #if UNITY_EDITOR_LINUX
       p.StartInfo.FileName = "which";
 #else  // UNITY_EDITOR_WIN
-       // the 'which' cmd equivalent in Windows is 'where.exe'
+      // the 'which' cmd equivalent in Windows is 'where.exe'
       p.StartInfo.FileName = "where.exe";
 #endif
       p.StartInfo.Arguments = cmd;
       p.RunWithAssertion(200, 0);
       var path = p.StandardOutput.ReadLine();
       if (!File.Exists(path))
-          return null;
+        return null;
       return path;
     }
 
     public static Process HeadlessProcess()
     {
-        var p = new Process();
-        p.StartInfo.RedirectStandardOutput = true;
-        p.StartInfo.RedirectStandardError = true;
-        p.StartInfo.RedirectStandardInput = true;
-        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-        p.StartInfo.CreateNoWindow = true;
-        p.StartInfo.UseShellExecute = false;
-        p.StartInfo.RedirectStandardOutput = true;
-        return p;
+      var p = new Process();
+      p.StartInfo.RedirectStandardOutput = true;
+      p.StartInfo.RedirectStandardError = true;
+      p.StartInfo.RedirectStandardInput = true;
+      p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+      p.StartInfo.CreateNoWindow = true;
+      p.StartInfo.UseShellExecute = false;
+      p.StartInfo.RedirectStandardOutput = true;
+      return p;
     }
 
     public static void RunWithAssertion(this Process p, int timeout, int expected)
@@ -67,9 +66,10 @@ namespace Neovim.Editor
         try
         {
           p.Kill();
-        } catch (Exception e)
+        }
+        catch (Exception e)
         {
-          UnityEngine.Debug.LogError("failed to kill process before timeout assertion error");
+          UnityEngine.Debug.LogError($"[neovim.ide] failed to kill process before timeout assertion error. Raison: {e.Message}");
         }
         throw new TimeoutException($"Process `{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}` timed out after {timeout} milliseconds");
       }
@@ -82,6 +82,6 @@ namespace Neovim.Editor
 
   public class ExitCodeMismatchException : Exception
   {
-    public ExitCodeMismatchException(string message) : base(message) {}
+    public ExitCodeMismatchException(string message) : base(message) { }
   }
 }
