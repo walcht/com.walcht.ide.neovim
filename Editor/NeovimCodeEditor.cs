@@ -138,7 +138,6 @@ namespace Neovim.Editor
       // get terminal launch cmd and its args from Unity editor preferences
       string termLaunchCmd = s_Config.TermLaunchCmd;
       string termLaunchArgs = s_Config.TermLaunchArgs;
-      string termLaunchEnv = s_Config.TermLaunchEnv;
 
       // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
       if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
@@ -208,9 +207,10 @@ namespace Neovim.Editor
       InitConfig();
 
       // initialize the discovered Neovim installations array
-      // TODO: ideally, we just check for nvim on path rather than assuming installation paths
+      // the first 'path' is usually set to "nvim" (or "nvim.exe"). That is obviously not a path but the expected name
+      // of Neovim on PATH (which is what the CmdPath does here).
       s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
-        .Select(p => p = Path.IsPathRooted(p) ? p : ProcessUtils.CmdPath(p))
+        .Select(p => p = Path.IsPathRooted(p) ? p : ProcessUtils.CmdPath(p, s_Config.ProcessTimeout))
         .Where(p => p != null && File.Exists(p))
         .Select(p =>
         {
@@ -219,7 +219,7 @@ namespace Neovim.Editor
           using var proc = ProcessUtils.HeadlessProcess();
           proc.StartInfo.FileName = p;
           proc.StartInfo.Arguments = "--version";
-          proc.RunWithAssertion(500, 0);
+          proc.RunWithAssertion(s_Config.ProcessTimeout);
           var line = proc.StandardOutput.ReadLine();
           if (line != null)
           {
@@ -245,7 +245,7 @@ namespace Neovim.Editor
 
       if (s_LinuxPlatform == LinuxDesktopEnvironment.X11)
       {
-        if (ProcessUtils.CmdPath("wmctrl") == null)
+        if (ProcessUtils.CmdPath("wmctrl", s_Config.ProcessTimeout) == null)
         {
           Debug.LogWarning("[neovim.ide] neovim window focusing feature is not available \n"
               + "Reason: cmd 'wmctrl' is not available. Please install 'wmctrl' for window focusing capability.");
@@ -262,7 +262,7 @@ namespace Neovim.Editor
         using var p = ProcessUtils.HeadlessProcess();
         p.StartInfo.FileName = "gnome-extensions";
         p.StartInfo.Arguments = "list";
-        p.RunWithAssertion(s_Config.ProcessTimeout, 0);
+        p.RunWithAssertion(s_Config.ProcessTimeout);
         const string uuid = "activate-window-by-title@lucaswerkmeister.de";
         var foundExtension = false;
         while (true)
@@ -338,7 +338,7 @@ namespace Neovim.Editor
       }
       else  // or through terminal
       {
-        if (ProcessUtils.CmdPath(cmd) == null)
+        if (ProcessUtils.CmdPath(cmd, s_Config.ProcessTimeout) == null)
           return false;
       }
 
@@ -665,12 +665,12 @@ namespace Neovim.Editor
         // to fix that, we simply catch the TimeoutException and kill the process.
         try
         {
-          p.RunWithAssertion(s_Config.ProcessTimeout, 0);
+          p.RunWithAssertion(s_Config.ProcessTimeout);
         }
         catch (TimeoutException) { }
 #else  // UNITY_EDITOR_LINUX
         // life is ez on Linux (unless you deal with any window manager...)
-        p.RunWithAssertion(s_Config.ProcessTimeout, 0);
+        p.RunWithAssertion(s_Config.ProcessTimeout);
 #endif
       }
 
@@ -692,11 +692,11 @@ namespace Neovim.Editor
 #if UNITY_EDITOR_WIN
         try
         {
-          p.RunWithAssertion(s_Config.ProcessTimeout, 0);
+          p.RunWithAssertion(s_Config.ProcessTimeout);
         }
         catch (TimeoutException) { }
 #else  // UNITY_EDITOR_LINUX
-        p.RunWithAssertion(s_Config.ProcessTimeout, 0);
+        p.RunWithAssertion(s_Config.ProcessTimeout);
 #endif
       }
 
@@ -716,7 +716,7 @@ namespace Neovim.Editor
               + $"Reason: cmd `{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}` failed.\n";
             try
             {
-              p.RunWithAssertion(s_Config.ProcessTimeout, 0);
+              p.RunWithAssertion(s_Config.ProcessTimeout);
             }
             catch (ExitCodeMismatchException)
             {
@@ -741,7 +741,7 @@ namespace Neovim.Editor
                   + "Did you install the 'activate-window-by-title@lucaswerkmeister.de' GNOME extension?\n";
             try
             {
-              p.RunWithAssertion(s_Config.ProcessTimeout, 0);
+              p.RunWithAssertion(s_Config.ProcessTimeout);
             }
             catch (ExitCodeMismatchException)
             {
@@ -751,7 +751,7 @@ namespace Neovim.Editor
             {
               Debug.LogWarning($"{error_msg}Exception message: timed out after {s_Config.ProcessTimeout} milliseconds.");
             }
-          break;
+            break;
           }
         case LinuxDesktopEnvironment.KDE:
           {
