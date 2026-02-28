@@ -712,7 +712,7 @@ namespace Neovim.Editor
             using var p = ProcessUtils.HeadlessProcess();
             p.StartInfo.FileName = "wmctrl";
             p.StartInfo.Arguments = "-a nvimunity";
-            const string error_msg = "[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+            var error_msg = "[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
               + $"Reason: cmd `{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}` failed.\n";
             try
             {
