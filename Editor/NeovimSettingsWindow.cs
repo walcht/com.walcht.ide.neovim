@@ -262,46 +262,46 @@ namespace Neovim.Editor
         .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
         .ToList();
 
-      // ── Two-panel layout ───────────────────────────────────────────────────
-      var twoPanel = new VisualElement();
-      twoPanel.style.flexDirection = FlexDirection.Row;
-      twoPanel.style.flexGrow = 1;
-      container.Add(twoPanel);
+      // ── SECTION 1: File clicking ──────────────────────────────────────────
+      var section1 = new VisualElement();
+      section1.style.flexDirection = FlexDirection.Column;
+      container.Add(section1);
 
-      // ── LEFT panel: Modifier Bindings ───────────────────────────────────────
-      var leftPanel = new VisualElement();
-      leftPanel.style.flexGrow = 1;
-      leftPanel.style.flexDirection = FlexDirection.Column;
-      leftPanel.style.borderRightWidth = 1;
-      leftPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
-      leftPanel.style.paddingRight = 4;
+      var section1Title = new Label("File clicking");
+      section1Title.style.unityFontStyleAndWeight = FontStyle.Bold;
+      section1Title.style.marginBottom = 8;
+      section1.Add(section1Title);
 
-      var leftTitle = new Label("Modifier Bindings");
-      leftTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      leftTitle.style.marginBottom = 4;
-      leftTitle.style.marginTop = 4;
-      leftTitle.style.marginLeft = 4;
-      leftPanel.Add(leftTitle);
+      var section1Row = new VisualElement();
+      section1Row.style.flexDirection = FlexDirection.Row;
+      section1.Add(section1Row);
 
-      var windowDesc = new Label("Configure how Neovim opens files when clicked in Unity, per modifier key:");
-      windowDesc.style.whiteSpace = WhiteSpace.Normal;
-      windowDesc.style.marginBottom = 6;
-      windowDesc.style.marginLeft = 4;
-      windowDesc.style.fontSize = 10;
-      leftPanel.Add(windowDesc);
+      // LEFT: Modifier Bindings
+      var bindingsPanel = new VisualElement();
+      bindingsPanel.style.flexGrow = 1;
+      bindingsPanel.style.flexDirection = FlexDirection.Column;
+      bindingsPanel.style.borderRightWidth = 1;
+      bindingsPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
+      bindingsPanel.style.paddingRight = 4;
+
+      var bindingsDesc = new Label("Configure how Neovim opens files when clicked in Unity, per modifier key:");
+      bindingsDesc.style.whiteSpace = WhiteSpace.Normal;
+      bindingsDesc.style.marginBottom = 6;
+      bindingsDesc.style.marginLeft = 4;
+      bindingsDesc.style.fontSize = 10;
+      bindingsPanel.Add(bindingsDesc);
 
       var scrollView = new ScrollView(ScrollViewMode.Vertical);
       scrollView.style.flexGrow = 1;
+      scrollView.style.minHeight = 120;
 
       m_BindingRows = new VisualElement();
       m_BindingRows.style.flexDirection = FlexDirection.Column;
       scrollView.Add(m_BindingRows);
-      leftPanel.Add(scrollView);
+      bindingsPanel.Add(scrollView);
 
-      // Populate binding rows
       RebuildBindingRows();
 
-      // Bottom toolbar: [+] Add binding + [Apply]
       var toolbar = new VisualElement();
       toolbar.style.flexDirection = FlexDirection.Row;
       toolbar.style.justifyContent = Justify.SpaceBetween;
@@ -328,93 +328,45 @@ namespace Neovim.Editor
 
       toolbar.Add(addBtn);
       toolbar.Add(applyBtn);
-      leftPanel.Add(toolbar);
+      bindingsPanel.Add(toolbar);
 
-      // Jump-to-Cursor Arguments section (for Console double-click)
-      var jumpSeparator = new VisualElement();
-      jumpSeparator.style.borderTopWidth = 1;
-      jumpSeparator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
-      jumpSeparator.style.marginTop = 12;
-      jumpSeparator.style.marginBottom = 6;
-      leftPanel.Add(jumpSeparator);
+      // RIGHT: Info
+      var infoPanel = new VisualElement();
+      infoPanel.style.width = 240;
+      infoPanel.style.flexShrink = 0;
+      infoPanel.style.flexDirection = FlexDirection.Column;
+      infoPanel.style.paddingLeft = 8;
 
-      var jumpTitle = new Label("Jump-to-Cursor Arguments");
-      jumpTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      jumpTitle.style.marginBottom = 4;
-      jumpTitle.style.marginLeft = 4;
-      leftPanel.Add(jumpTitle);
-
-      var jumpDesc = new Label("Used when double-clicking Console errors/warnings to jump to exact line/column in Neovim.");
-      jumpDesc.style.whiteSpace = WhiteSpace.Normal;
-      jumpDesc.style.fontSize = 10;
-      jumpDesc.style.marginLeft = 4;
-      jumpDesc.style.marginBottom = 4;
-      leftPanel.Add(jumpDesc);
-
-      var jumpField = new TextField
-      {
-        label = "Arguments",
-        tooltip = "Arguments when jumping to a specific line/column in Neovim.",
-        value = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs
-      };
-      leftPanel.Add(jumpField);
-
-      var jumpHelp = new Label(
-        "Placeholders:\n{serverSocket} - Socket for Neovim communication\n{line} - Line number\n{column} - Column number"
-      )
-      {
-        style = { fontSize = 10, whiteSpace = WhiteSpace.Normal, marginTop = 2, marginLeft = 4 }
-      };
-      leftPanel.Add(jumpHelp);
-
-      var updateJumpBtn = new Button(() =>
-      {
-        NeovimCodeEditor.s_Config.JumpToCursorPositionArgs = jumpField.value;
-        NeovimCodeEditor.s_Config.Save();
-      })
-      { text = "Update Jump Args" };
-      updateJumpBtn.style.marginTop = 5;
-      updateJumpBtn.style.marginLeft = 4;
-      leftPanel.Add(updateJumpBtn);
-
-      // ── RIGHT panel: Template Info ───────────────────────────────────────
-      var rightPanel = new VisualElement
-      {
-        style = { width = 280, flexShrink = 0, flexDirection = FlexDirection.Column, paddingLeft = 8, paddingTop = 8, paddingRight = 4 }
-      };
-
-      // Template Info section
-      var rightTitle = new Label("Template Info");
-      rightTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      rightTitle.style.marginBottom = 6;
-      rightPanel.Add(rightTitle);
+      var infoTitle = new Label("Info");
+      infoTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      infoTitle.style.marginBottom = 6;
+      infoPanel.Add(infoTitle);
 
       m_InfoName = new Label();
       m_InfoName.style.unityFontStyleAndWeight = FontStyle.Bold;
       m_InfoName.style.marginBottom = 4;
       m_InfoName.style.whiteSpace = WhiteSpace.Normal;
-      rightPanel.Add(m_InfoName);
+      infoPanel.Add(m_InfoName);
 
       m_InfoDesc = new Label();
       m_InfoDesc.style.whiteSpace = WhiteSpace.Normal;
       m_InfoDesc.style.flexWrap = Wrap.Wrap;
-      rightPanel.Add(m_InfoDesc);
+      m_InfoDesc.style.fontSize = 10;
+      infoPanel.Add(m_InfoDesc);
 
       SetInfoPanel(null);
 
-      // Separator
       var separator = new VisualElement();
       separator.style.borderTopWidth = 1;
       separator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
       separator.style.marginTop = 8;
       separator.style.marginBottom = 6;
-      rightPanel.Add(separator);
+      infoPanel.Add(separator);
 
-      // Placeholder reference
-      var placeholderTitle = new Label("Open-File Placeholders");
+      var placeholderTitle = new Label("Placeholders");
       placeholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
       placeholderTitle.style.marginBottom = 4;
-      rightPanel.Add(placeholderTitle);
+      infoPanel.Add(placeholderTitle);
 
       var placeholderInfo = new Label(
         "{filePath} — path to the file being opened.\n\n"
@@ -422,10 +374,87 @@ namespace Neovim.Editor
       placeholderInfo.style.whiteSpace = WhiteSpace.Normal;
       placeholderInfo.style.flexWrap = Wrap.Wrap;
       placeholderInfo.style.fontSize = 10;
-      rightPanel.Add(placeholderInfo);
+      infoPanel.Add(placeholderInfo);
 
-      twoPanel.Add(leftPanel);
-      twoPanel.Add(rightPanel);
+      section1Row.Add(bindingsPanel);
+      section1Row.Add(infoPanel);
+
+      // ── SECTION 2: Console item clicking ───────────────────────────────────
+      var section2 = new VisualElement();
+      section2.style.flexDirection = FlexDirection.Column;
+      section2.style.marginTop = 16;
+      container.Add(section2);
+
+      var section2Title = new Label("Console item clicking");
+      section2Title.style.unityFontStyleAndWeight = FontStyle.Bold;
+      section2Title.style.marginBottom = 8;
+      section2.Add(section2Title);
+
+      var section2Row = new VisualElement();
+      section2Row.style.flexDirection = FlexDirection.Row;
+      section2.Add(section2Row);
+
+      // LEFT: Jump args field
+      var jumpPanel = new VisualElement();
+      jumpPanel.style.flexGrow = 1;
+      jumpPanel.style.flexDirection = FlexDirection.Column;
+      jumpPanel.style.borderRightWidth = 1;
+      jumpPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
+      jumpPanel.style.paddingRight = 4;
+
+      var jumpDesc = new Label("Used when double-clicking Console errors/warnings to jump to exact line/column in Neovim.");
+      jumpDesc.style.whiteSpace = WhiteSpace.Normal;
+      jumpDesc.style.fontSize = 10;
+      jumpDesc.style.marginLeft = 4;
+      jumpDesc.style.marginBottom = 6;
+      jumpPanel.Add(jumpDesc);
+
+      var jumpField = new TextField
+      {
+        label = "Arguments",
+        tooltip = "Arguments when jumping to a specific line/column in Neovim.",
+        value = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs
+      };
+      jumpPanel.Add(jumpField);
+
+      var updateJumpBtn = new Button(() =>
+      {
+        NeovimCodeEditor.s_Config.JumpToCursorPositionArgs = jumpField.value;
+        NeovimCodeEditor.s_Config.Save();
+      })
+      { text = "Update" };
+      updateJumpBtn.style.marginTop = 5;
+      updateJumpBtn.style.marginLeft = 4;
+      jumpPanel.Add(updateJumpBtn);
+
+      // RIGHT: Info (Placeholders)
+      var jumpInfoPanel = new VisualElement();
+      jumpInfoPanel.style.width = 240;
+      jumpInfoPanel.style.flexShrink = 0;
+      jumpInfoPanel.style.flexDirection = FlexDirection.Column;
+      jumpInfoPanel.style.paddingLeft = 8;
+
+      var jumpInfoTitle = new Label("Info");
+      jumpInfoTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      jumpInfoTitle.style.marginBottom = 6;
+      jumpInfoPanel.Add(jumpInfoTitle);
+
+      var jumpPlaceholderTitle = new Label("Placeholders");
+      jumpPlaceholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      jumpPlaceholderTitle.style.marginBottom = 4;
+      jumpInfoPanel.Add(jumpPlaceholderTitle);
+
+      var jumpPlaceholderInfo = new Label(
+        "{serverSocket} — socket used to communicate with the Neovim server (Unix domain socket on Linux, TCP address on Windows).\n\n"
+        + "{line} — line number to jump to.\n\n"
+        + "{column} — column number to jump to.");
+      jumpPlaceholderInfo.style.whiteSpace = WhiteSpace.Normal;
+      jumpPlaceholderInfo.style.flexWrap = Wrap.Wrap;
+      jumpPlaceholderInfo.style.fontSize = 10;
+      jumpInfoPanel.Add(jumpPlaceholderInfo);
+
+      section2Row.Add(jumpPanel);
+      section2Row.Add(jumpInfoPanel);
     }
 
     private void RebuildBindingRows()
