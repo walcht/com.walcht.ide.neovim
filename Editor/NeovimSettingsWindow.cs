@@ -34,25 +34,27 @@ namespace Neovim.Editor
       var window = GetWindow<NeovimSettingsWindow>();
       window.titleContent = new GUIContent(k_WindowTitle);
       window.minSize = new Vector2(600, 400);
-      window.position = new Rect(100, 100, 750, 550);
     }
 
     public void CreateGUI()
     {
-      // Create TabView
+      // Create TabView with persistent state
       var tabView = new TabView();
+      tabView.viewDataKey = "neovim-settings-tabview";
       tabView.style.flexGrow = 1;
 
-      // Tab 1: Behavior
-      var behaviorTab = new Tab("Behavior");
-      var behaviorContent = new VisualElement();
-      behaviorContent.style.paddingTop = 10;
-      behaviorContent.style.paddingBottom = 10;
-      behaviorContent.style.paddingLeft = 10;
-      behaviorContent.style.paddingRight = 10;
-      CreateBehaviorSection(behaviorContent);
-      behaviorTab.Add(behaviorContent);
-      tabView.Add(behaviorTab);
+      // Tab 1: General (Behavior + Maintenance)
+      var generalTab = new Tab("General");
+      var generalContent = new VisualElement();
+      generalContent.style.paddingTop = 10;
+      generalContent.style.paddingBottom = 10;
+      generalContent.style.paddingLeft = 10;
+      generalContent.style.paddingRight = 10;
+      CreateBehaviorSection(generalContent);
+      AddSeparator(generalContent);
+      CreateMaintenanceSection(generalContent);
+      generalTab.Add(generalContent);
+      tabView.Add(generalTab);
 
       // Tab 2: Terminal
       var terminalTab = new Tab("Terminal");
@@ -76,22 +78,30 @@ namespace Neovim.Editor
       fileOpeningTab.Add(fileOpeningContent);
       tabView.Add(fileOpeningTab);
 
-      // Tab 4: Maintenance
-      var maintenanceTab = new Tab("Maintenance");
-      var maintenanceContent = new VisualElement();
-      maintenanceContent.style.paddingTop = 10;
-      maintenanceContent.style.paddingBottom = 10;
-      maintenanceContent.style.paddingLeft = 10;
-      maintenanceContent.style.paddingRight = 10;
-      CreateMaintenanceSection(maintenanceContent);
-      maintenanceTab.Add(maintenanceContent);
-      tabView.Add(maintenanceTab);
-
       rootVisualElement.Add(tabView);
     }
 
     private void CreateBehaviorSection(VisualElement container)
     {
+      var header = new Label("Process Settings")
+      {
+        style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 8 }
+      };
+      container.Add(header);
+
+      // Two-column layout
+      var row = new VisualElement();
+      row.style.flexDirection = FlexDirection.Row;
+      container.Add(row);
+
+      // LEFT: Settings
+      var leftPanel = new VisualElement();
+      leftPanel.style.flexGrow = 1;
+      leftPanel.style.flexDirection = FlexDirection.Column;
+      leftPanel.style.borderRightWidth = 1;
+      leftPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
+      leftPanel.style.paddingRight = 4;
+
       // Kill Nvim on Quit
       var killToggle = new Toggle("Kill Nvim on Quit")
       {
@@ -103,16 +113,16 @@ namespace Neovim.Editor
         NeovimCodeEditor.s_Config.KillNvimOnQuit = e.newValue;
         NeovimCodeEditor.s_Config.Save();
       });
-      container.Add(killToggle);
+      leftPanel.Add(killToggle);
 
-      container.Add(new VisualElement { style = { height = 10 } });
+      leftPanel.Add(new VisualElement { style = { height = 10 } });
 
       // Process Timeout
       var timeoutLabel = new Label("Process Timeout (milliseconds)")
       {
         style = { unityFontStyleAndWeight = FontStyle.Bold }
       };
-      container.Add(timeoutLabel);
+      leftPanel.Add(timeoutLabel);
 
       var timeoutField = new IntegerField
       {
@@ -120,18 +130,10 @@ namespace Neovim.Editor
         tooltip = "Process timeout after which the process is killed. Used for open-file, jump-to-cursor, and focus-on-neovim processes.",
         value = NeovimCodeEditor.s_Config.ProcessTimeout
       };
-      container.Add(timeoutField);
-
-      var timeoutHelp = new HelpBox(
-        "Smaller values result in smoother experience at the cost of potential process being killed before completion.\n" +
-        "Range: 1-1000ms",
-        HelpBoxMessageType.Info
-      );
-      timeoutHelp.style.marginTop = 5;
-      container.Add(timeoutHelp);
+      leftPanel.Add(timeoutField);
 
       var timeoutError = new Label { style = { color = Color.red, display = DisplayStyle.None } };
-      container.Add(timeoutError);
+      leftPanel.Add(timeoutError);
 
       var updateTimeoutBtn = new Button(() =>
       {
@@ -155,9 +157,33 @@ namespace Neovim.Editor
         NeovimCodeEditor.s_Config.Save();
         timeoutError.style.display = DisplayStyle.None;
       })
-      { text = "Update Timeout" };
+      { text = "Update" };
       updateTimeoutBtn.style.marginTop = 5;
-      container.Add(updateTimeoutBtn);
+      updateTimeoutBtn.style.marginLeft = 4;
+      leftPanel.Add(updateTimeoutBtn);
+
+      // RIGHT: Info panel
+      var rightPanel = new VisualElement();
+      rightPanel.style.width = 240;
+      rightPanel.style.flexShrink = 0;
+      rightPanel.style.flexDirection = FlexDirection.Column;
+      rightPanel.style.paddingLeft = 8;
+
+      var placeholderTitle = new Label("Timeout");
+      placeholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      placeholderTitle.style.marginBottom = 4;
+      rightPanel.Add(placeholderTitle);
+
+      var placeholderInfo = new Label(
+        "Smaller values result in smoother experience at the cost of potential process being killed before completion.\n\n"
+        + "Range: 1-1000ms");
+      placeholderInfo.style.whiteSpace = WhiteSpace.Normal;
+      placeholderInfo.style.flexWrap = Wrap.Wrap;
+      placeholderInfo.style.fontSize = 10;
+      rightPanel.Add(placeholderInfo);
+
+      row.Add(leftPanel);
+      row.Add(rightPanel);
     }
 
     private void CreateTerminalSection(VisualElement container)
@@ -165,9 +191,29 @@ namespace Neovim.Editor
       // Header
       var header = new Label("Terminal Launch Command")
       {
-        style = { unityFontStyleAndWeight = FontStyle.Bold }
+        style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 8 }
       };
       container.Add(header);
+
+      // Two-column layout
+      var row = new VisualElement();
+      row.style.flexDirection = FlexDirection.Row;
+      container.Add(row);
+
+      // LEFT: Input fields
+      var leftPanel = new VisualElement();
+      leftPanel.style.flexGrow = 1;
+      leftPanel.style.flexDirection = FlexDirection.Column;
+      leftPanel.style.borderRightWidth = 1;
+      leftPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
+      leftPanel.style.paddingRight = 4;
+
+      // Description
+      var desc = new Label("Configure the terminal emulator used when opening a file for the first time.");
+      desc.style.whiteSpace = WhiteSpace.Normal;
+      desc.style.fontSize = 10;
+      desc.style.marginBottom = 6;
+      leftPanel.Add(desc);
 
       // Template dropdown
       var templateNames = NeovimCodeEditor.s_TermLaunchCmds
@@ -177,7 +223,7 @@ namespace Neovim.Editor
       var templateDropdown = new DropdownField("Template", templateNames, 0);
       templateDropdown.SetValueWithoutNotify("Select template...");
       templateDropdown.style.marginTop = 5;
-      container.Add(templateDropdown);
+      leftPanel.Add(templateDropdown);
 
       // Command field
       var cmdField = new TextField
@@ -186,7 +232,7 @@ namespace Neovim.Editor
         tooltip = "Executable that will be executed when opening a file for the first time. Must be accessible via PATH.",
         value = NeovimCodeEditor.s_Config.TermLaunchCmd ?? ""
       };
-      container.Add(cmdField);
+      leftPanel.Add(cmdField);
 
       // Arguments field
       var argsField = new TextField
@@ -195,7 +241,7 @@ namespace Neovim.Editor
         tooltip = "Arguments passed to the executable. Use {app}, {filePath}, {serverSocket}, {instanceId} as placeholders.",
         value = NeovimCodeEditor.s_Config.TermLaunchArgs ?? ""
       };
-      container.Add(argsField);
+      leftPanel.Add(argsField);
 
       // Environment field
       var envField = new TextField
@@ -204,37 +250,11 @@ namespace Neovim.Editor
         tooltip = "Space-separated list: ENV_0=VALUE_0 ENV_1=VALUE_1",
         value = NeovimCodeEditor.s_Config.TermLaunchEnv ?? ""
       };
-      container.Add(envField);
-
-      // Placeholder reference
-      var placeholderHelp = new HelpBox(
-        "Placeholders:\n" +
-        "{app} - Neovim executable path\n" +
-        "{filePath} - Path to file being opened\n" +
-        "{serverSocket} - Socket for Neovim server communication\n" +
-        "{instanceId} - Unity process ID\n" +
-#if UNITY_EDITOR_WIN
-        "{getProcessPPIDScriptPath} - Path to GetProcessPPID.ps1 for window focusing\n" +
-#endif
-        "{environment} - Environment variables from the field above",
-        HelpBoxMessageType.Info
-      );
-      placeholderHelp.style.marginTop = 5;
-      container.Add(placeholderHelp);
+      leftPanel.Add(envField);
 
       // Status message
-      var statusLabel = new Label { style = { color = Color.green, marginTop = 5 } };
-      container.Add(statusLabel);
-
-      // Template dropdown callback
-      templateDropdown.RegisterValueChangedCallback(e =>
-      {
-        if (e.newValue == "Custom") return;
-        var template = NeovimCodeEditor.s_TermLaunchCmds.First(t => t.Item1 == e.newValue);
-        cmdField.value = template.Item1;
-        argsField.value = template.Item2;
-        envField.value = template.Item3;
-      });
+      var statusLabel = new Label { style = { color = Color.green, marginTop = 5, marginLeft = 4 } };
+      leftPanel.Add(statusLabel);
 
       // Update button
       var updateBtn = new Button(() =>
@@ -252,7 +272,47 @@ namespace Neovim.Editor
       })
       { text = "Update" };
       updateBtn.style.marginTop = 5;
-      container.Add(updateBtn);
+      updateBtn.style.marginLeft = 4;
+      leftPanel.Add(updateBtn);
+
+      // Template dropdown callback
+      templateDropdown.RegisterValueChangedCallback(e =>
+      {
+        if (e.newValue == "Custom") return;
+        var template = NeovimCodeEditor.s_TermLaunchCmds.First(t => t.Item1 == e.newValue);
+        cmdField.value = template.Item1;
+        argsField.value = template.Item2;
+        envField.value = template.Item3;
+      });
+
+      // RIGHT: Info panel
+      var rightPanel = new VisualElement();
+      rightPanel.style.width = 240;
+      rightPanel.style.flexShrink = 0;
+      rightPanel.style.flexDirection = FlexDirection.Column;
+      rightPanel.style.paddingLeft = 8;
+
+      var placeholderTitle = new Label("Placeholders");
+      placeholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      placeholderTitle.style.marginBottom = 4;
+      rightPanel.Add(placeholderTitle);
+
+      var placeholderInfo = new Label(
+        "{app} — Neovim executable path.\n\n"
+        + "{filePath} — Path to file being opened.\n\n"
+        + "{serverSocket} — Socket for Neovim server communication.\n\n"
+        + "{instanceId} — Unity process ID.\n\n"
+#if UNITY_EDITOR_WIN
+        + "{getProcessPPIDScriptPath} — Path to GetProcessPPID.ps1 for window focusing.\n\n"
+#endif
+        + "{environment} — Environment variables from the field above.");
+      placeholderInfo.style.whiteSpace = WhiteSpace.Normal;
+      placeholderInfo.style.flexWrap = Wrap.Wrap;
+      placeholderInfo.style.fontSize = 10;
+      rightPanel.Add(placeholderInfo);
+
+      row.Add(leftPanel);
+      row.Add(rightPanel);
     }
 
     private void CreateFileOpeningSection(VisualElement container)
@@ -337,11 +397,6 @@ namespace Neovim.Editor
       infoPanel.style.flexDirection = FlexDirection.Column;
       infoPanel.style.paddingLeft = 8;
 
-      var infoTitle = new Label("Info");
-      infoTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      infoTitle.style.marginBottom = 6;
-      infoPanel.Add(infoTitle);
-
       m_InfoName = new Label();
       m_InfoName.style.unityFontStyleAndWeight = FontStyle.Bold;
       m_InfoName.style.marginBottom = 4;
@@ -356,16 +411,10 @@ namespace Neovim.Editor
 
       SetInfoPanel(null);
 
-      var separator = new VisualElement();
-      separator.style.borderTopWidth = 1;
-      separator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
-      separator.style.marginTop = 8;
-      separator.style.marginBottom = 6;
-      infoPanel.Add(separator);
-
       var placeholderTitle = new Label("Placeholders");
       placeholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
       placeholderTitle.style.marginBottom = 4;
+      placeholderTitle.style.marginTop = 12;
       infoPanel.Add(placeholderTitle);
 
       var placeholderInfo = new Label(
@@ -379,10 +428,17 @@ namespace Neovim.Editor
       section1Row.Add(bindingsPanel);
       section1Row.Add(infoPanel);
 
+      // ── Separator between sections ───────────────────────────────────────
+      var sectionSeparator = new VisualElement();
+      sectionSeparator.style.borderTopWidth = 1;
+      sectionSeparator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
+      sectionSeparator.style.marginTop = 16;
+      sectionSeparator.style.marginBottom = 16;
+      container.Add(sectionSeparator);
+
       // ── SECTION 2: Console item clicking ───────────────────────────────────
       var section2 = new VisualElement();
       section2.style.flexDirection = FlexDirection.Column;
-      section2.style.marginTop = 16;
       container.Add(section2);
 
       var section2Title = new Label("Console item clicking");
@@ -433,11 +489,6 @@ namespace Neovim.Editor
       jumpInfoPanel.style.flexShrink = 0;
       jumpInfoPanel.style.flexDirection = FlexDirection.Column;
       jumpInfoPanel.style.paddingLeft = 8;
-
-      var jumpInfoTitle = new Label("Info");
-      jumpInfoTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      jumpInfoTitle.style.marginBottom = 6;
-      jumpInfoPanel.Add(jumpInfoTitle);
 
       var jumpPlaceholderTitle = new Label("Placeholders");
       jumpPlaceholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -586,7 +637,7 @@ namespace Neovim.Editor
       if (template == null)
       {
         m_InfoName.text = "";
-        m_InfoDesc.text = "Select a template to see its description.";
+        m_InfoDesc.text = "You may select a template from each row's dropdown.";
       }
       else
       {
@@ -650,6 +701,16 @@ namespace Neovim.Editor
       container.Add(forceResetBtn);
 
       // NOTE: Regenerate Project Files removed - already exists in External Tools preferences
+    }
+
+    private void AddSeparator(VisualElement container)
+    {
+      var separator = new VisualElement();
+      separator.style.borderTopWidth = 1;
+      separator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
+      separator.style.marginTop = 16;
+      separator.style.marginBottom = 16;
+      container.Add(separator);
     }
   }
 }
