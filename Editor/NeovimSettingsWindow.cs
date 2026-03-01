@@ -26,10 +26,7 @@ namespace Neovim.Editor
       tabView.style.flexGrow = 1;
 
       // Tab 1: Behavior
-      var behaviorTab = new Tab();
-      var behaviorLabel = new Label();
-      behaviorLabel.text = "Behavior";
-      behaviorTab.Add(behaviorLabel);
+      var behaviorTab = new Tab("Behavior");
       var behaviorContent = new VisualElement();
       behaviorContent.style.paddingTop = 10;
       behaviorContent.style.paddingBottom = 10;
@@ -40,10 +37,7 @@ namespace Neovim.Editor
       tabView.Add(behaviorTab);
 
       // Tab 2: Terminal
-      var terminalTab = new Tab();
-      var terminalLabel = new Label();
-      terminalLabel.text = "Terminal";
-      terminalTab.Add(terminalLabel);
+      var terminalTab = new Tab("Terminal");
       var terminalContent = new VisualElement();
       terminalContent.style.paddingTop = 10;
       terminalContent.style.paddingBottom = 10;
@@ -54,10 +48,7 @@ namespace Neovim.Editor
       tabView.Add(terminalTab);
 
       // Tab 3: File Opening
-      var fileOpeningTab = new Tab();
-      var fileOpeningLabel = new Label();
-      fileOpeningLabel.text = "File Opening";
-      fileOpeningTab.Add(fileOpeningLabel);
+      var fileOpeningTab = new Tab("File Opening");
       var fileOpeningContent = new VisualElement();
       fileOpeningContent.style.paddingTop = 10;
       fileOpeningContent.style.paddingBottom = 10;
@@ -68,10 +59,7 @@ namespace Neovim.Editor
       tabView.Add(fileOpeningTab);
 
       // Tab 4: Maintenance
-      var maintenanceTab = new Tab();
-      var maintenanceLabel = new Label();
-      maintenanceLabel.text = "Maintenance";
-      maintenanceTab.Add(maintenanceLabel);
+      var maintenanceTab = new Tab("Maintenance");
       var maintenanceContent = new VisualElement();
       maintenanceContent.style.paddingTop = 10;
       maintenanceContent.style.paddingBottom = 10;
