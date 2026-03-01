@@ -1,6 +1,5 @@
 #pragma warning disable IDE0130
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Diagnostics;
@@ -35,8 +34,9 @@ namespace Neovim.Editor
     /// <summary>
     ///   These are the default template arguments that one of which can potentially be used
     ///   to send request to the Neovim server instance upon opening a file (or clicking on
-    ///   error message in console, etc).
-    ///   First entry is the default.
+    ///   error message in console, etc). Depending on the modifier that is currently applied,
+    ///   different commands could be sent to the Neovim server instance (e.g., open in a new
+    ///   tab, or open in a vertical split, etc.). First entry is the default.
     /// </summary>
     public static readonly (string Args, string Name, string Desc)[] s_OpenFileArgsTemplates = {
       ("--server {serverSocket} --remote-send \":drop {filePath}<CR>\"",
@@ -150,7 +150,6 @@ namespace Neovim.Editor
       // get terminal launch cmd and its args from Unity editor preferences
       string termLaunchCmd = s_Config.TermLaunchCmd;
       string termLaunchArgs = s_Config.TermLaunchArgs;
-      string termLaunchEnv = s_Config.TermLaunchEnv;
 
       // if cmd is empty/whitespace => no terminal launch cmd has been provided/chosen yet
       if (string.IsNullOrWhiteSpace(termLaunchCmd) || string.IsNullOrWhiteSpace(termLaunchArgs))
@@ -229,21 +228,28 @@ namespace Neovim.Editor
       InitConfig();
 
       // initialize the discovered Neovim installations array
+      // the first 'path' is usually set to "nvim" (or "nvim.exe"). That is obviously not a path but the expected name
+      // of Neovim on PATH (which is what the CmdPath does here).
       s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
-        .Where(p => File.Exists(p) || ProcessUtils.CheckCmdExistence($"\"{p}\""))
-        .Select((p, _) =>
+        .Select(p => p = Path.IsPathRooted(p) ? p : ProcessUtils.CmdPath(p, s_Config.ProcessTimeout))
+        .Where(p => p != null && File.Exists(p))
+        .Select(p =>
         {
           // get Neovim installation version
           string version = "v-unknown";
-          ProcessUtils.GetCmdStdOutput($"\"{p}\" --version", out List<string> output_lines);
-          if (output_lines.Any() && !string.IsNullOrWhiteSpace(output_lines[0]))
+          using var proc = ProcessUtils.HeadlessProcess();
+          proc.StartInfo.FileName = p;
+          proc.StartInfo.Arguments = "--version";
+          proc.RunWithAssertion(s_Config.ProcessTimeout);
+          var line = proc.StandardOutput.ReadLine();
+          if (line != null)
           {
-            version = output_lines[0][(output_lines[0].IndexOf(' ') + 1)..];
+            version = line[(line.IndexOf(' ') + 1)..];
           }
           return new CodeEditor.Installation
           {
             Name = $"Neovim {version}",
-            Path = Path.GetFullPath(p),
+            Path = p,
           };
         })
         .ToArray();
@@ -260,7 +266,7 @@ namespace Neovim.Editor
 
       if (s_LinuxPlatform == LinuxDesktopEnvironment.X11)
       {
-        if (!ProcessUtils.CheckCmdExistence("wmctrl"))
+        if (ProcessUtils.CmdPath("wmctrl", s_Config.ProcessTimeout) == null)
         {
           Debug.LogWarning("[neovim.ide] neovim window focusing feature is not available \n"
               + "Reason: cmd 'wmctrl' is not available. Please install 'wmctrl' for window focusing capability.");
@@ -274,15 +280,34 @@ namespace Neovim.Editor
       {
         // this prompts the user to install a GNOME extension to focus on a window by title
         // there is unfortunately no other way to do this on GNOME under Wayland :/
-        if (!ProcessUtils.RunShellCmd(@"
-UUID=activate-window-by-title@lucaswerkmeister.de
-if ! gnome-extensions list | grep --quiet $UUID; then
-  busctl --user call org.gnome.Shell.Extensions /org/gnome/Shell/Extensions org.gnome.Shell.Extensions InstallRemoteExtension s $UUID
-fi
-", timeout: 10000))
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = "gnome-extensions";
+        p.StartInfo.Arguments = "list";
+        p.RunWithAssertion(s_Config.ProcessTimeout);
+        const string uuid = "activate-window-by-title@lucaswerkmeister.de";
+        var foundExtension = false;
+        while (true)
         {
-          Debug.LogWarning("[neovim.ide] neovim window focusing feature is not available \n"
-              + "Reason: failed to install GNOME extension: activate-window-by-title@lucaswerkmeister.de");
+          var line = p.StandardOutput.ReadLine();
+          if (line == null) break;
+          if (line.Contains(uuid))
+          {
+            foundExtension = true;
+            break;
+          }
+        }
+        using var p2 = ProcessUtils.HeadlessProcess();
+        p2.StartInfo.FileName = "busctl";
+        p2.StartInfo.Arguments = $"--user call org.gnome.Shell.Extensions /org/gnome/Shell/Extensions org.gnome.Shell.Extensions InstallRemoteExtension s {uuid}";
+        p2.Start();
+        const string error = "[neovim.ide] neovim window focusing feature is not available\n"
+            + "Reason: failed to install GNOME extension: activate-window-by-title@lucaswerkmeister.de\n";
+        if (!p2.WaitForExit(10000))
+        {
+          Debug.LogWarning($"{error}Reason: timed out after 10 seconds");
+        } else if (p2.ExitCode != 0)
+        {
+          Debug.LogWarning($"{error}Reason: non-zero exit code ({p2.ExitCode})");
         }
         else
         {
@@ -334,7 +359,7 @@ fi
       }
       else  // or through terminal
       {
-        if (!ProcessUtils.CheckCmdExistence(cmd))
+        if (ProcessUtils.CmdPath(cmd, s_Config.ProcessTimeout) == null)
           return false;
       }
 
@@ -665,7 +690,21 @@ fi
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{filePath}", $"\"{filePath}\"");
 
-        ProcessUtils.RunProcessAndKillAfter(app, args, timeout: s_Config.ProcessTimeout);
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = app;
+        p.StartInfo.Arguments = args;
+#if UNITY_EDITOR_WIN
+        // on Windows, for some reason the process executes correctly but without exiting within any given timeout
+        // to fix that, we simply catch the TimeoutException and kill the process.
+        try
+        {
+          p.RunWithAssertion(s_Config.ProcessTimeout);
+        }
+        catch (TimeoutException) { }
+#else  // UNITY_EDITOR_LINUX
+        // life is ez on Linux (unless you deal with any window manager...)
+        p.RunWithAssertion(s_Config.ProcessTimeout);
+#endif
       }
 
       /*
@@ -680,7 +719,18 @@ fi
           .Replace("{line}", line.ToString())
           .Replace("{column}", column.ToString());
 
-        ProcessUtils.RunProcessAndKillAfter(app, args, timeout: s_Config.ProcessTimeout);
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = app;
+        p.StartInfo.Arguments = args;
+#if UNITY_EDITOR_WIN
+        try
+        {
+          p.RunWithAssertion(s_Config.ProcessTimeout);
+        }
+        catch (TimeoutException) { }
+#else  // UNITY_EDITOR_LINUX
+        p.RunWithAssertion(s_Config.ProcessTimeout);
+#endif
       }
 
       // optionally focus on Neovim - this is extremely tricky to implement across platforms
@@ -692,28 +742,50 @@ fi
       {
         case LinuxDesktopEnvironment.X11:
           {
-            string cmd = @"wmctrl -a nvimunity";
-            if (!ProcessUtils.RunShellCmd(cmd, timeout: s_Config.ProcessTimeout))
+            using var p = ProcessUtils.HeadlessProcess();
+            p.StartInfo.FileName = "wmctrl";
+            p.StartInfo.Arguments = "-a nvimunity";
+            var error_msg = "[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+              + $"Reason: cmd `{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}` failed.\n";
+            try
             {
-              Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
-                  + $"Failed to execute the cmd: '{cmd}'");
+              p.RunWithAssertion(s_Config.ProcessTimeout);
+            }
+            catch (ExitCodeMismatchException)
+            {
+              Debug.LogWarning($"{error_msg}Reason: non-zero exit code.");
+            }
+            catch (TimeoutException)
+            {
+              Debug.LogWarning($"{error_msg}Exception message: timed out after {s_Config.ProcessTimeout} milliseconds.");
             }
             break;
           }
         case LinuxDesktopEnvironment.GNOME:
           {
             // a clusterfuck of a mess - TODO: learn gdbus and clean this shit up somehow
-            string cmd = @"gdbus call --session --dest org.gnome.Shell \
+            using var p = ProcessUtils.HeadlessProcess();
+            p.StartInfo.FileName = "gdbus";
+            p.StartInfo.Arguments = @"call --session --dest org.gnome.Shell \
 --object-path /de/lucaswerkmeister/ActivateWindowByTitle \
 --method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring 'nvimunity'";
-            if (!ProcessUtils.RunShellCmd(cmd, timeout: s_Config.ProcessTimeout))
-            {
-              Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+            const string error_msg = "[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
                   + "Did you logout and login of your GNOME session?\n"
-                  + "Did you install the 'activate-window-by-title@lucaswerkmeister.de' GNOME extension?");
+                  + "Did you install the 'activate-window-by-title@lucaswerkmeister.de' GNOME extension?\n";
+            try
+            {
+              p.RunWithAssertion(s_Config.ProcessTimeout);
             }
+            catch (ExitCodeMismatchException)
+            {
+              Debug.LogWarning($"{error_msg}Reason: non-zero exit code.");
+            }
+            catch (TimeoutException)
+            {
+              Debug.LogWarning($"{error_msg}Exception message: timed out after {s_Config.ProcessTimeout} milliseconds.");
+            }
+            break;
           }
-          break;
         case LinuxDesktopEnvironment.KDE:
           {
             // TODO: add support for switching focus to Neovim on KDE Wayland

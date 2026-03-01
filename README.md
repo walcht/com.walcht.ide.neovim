@@ -233,10 +233,29 @@ command should be added/supported.
   is a limitation that is hard to circumvent because each hardware/OS may
   execute cmd shell processes in different times.
 
+- Issue: neovim doesn't show up in the External Script Editor on Windows when
+  downloaded via a package manager.
+
+  Solution: see this issue #18. This plugin initially looks in PATH for nvim
+  (or nvim.exe on Windows) and in case it fails it looks into a set of
+  *usual Neovim installation paths*. This will shortly be fixed by providing
+  a top-menu Unity option to provide the full path to a Neovim installation.
+
 ## TODOs
 
 - [ ] automatically refresh and sync Unity project when Neovim changes/adds assets (CRUCIAL)
 - [ ] add MacOS support (IMPORTANT)
+
+## Contributions
+
+Given the nature of this project, contributions are more than welcome and are
+very appreciated. You are encouraged to test on **Unity >= 2022.3 LTS** and not
+just newer versions of Unity.
+
+> [!Note]
+> It is completely fine if you can't test on multiple platforms or/and Unity
+> versions. You are encouraged to give me access rights to your PR fork so
+> that I can add the potential fixes/changes for other platforms.
 
 ## License
 
