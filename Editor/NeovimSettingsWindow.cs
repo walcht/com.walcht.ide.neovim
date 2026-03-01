@@ -11,10 +11,6 @@ namespace Neovim.Editor
   {
     private const string k_WindowTitle = "Neovim Settings";
 
-    // Tab tracking
-    private enum Tab { Behavior, Terminal, FileOpening, Maintenance }
-    private Tab m_CurrentTab = Tab.Behavior;
-
     // File Opening tab working copy
     private List<ModifierBinding> m_Bindings;
     private Label m_BindingInfoName;
@@ -22,13 +18,6 @@ namespace Neovim.Editor
     private VisualElement m_BindingRows;
     private static readonly List<string> s_TemplateNames;
     private const string k_CustomLabel = "Custom";
-
-    // Tab content containers
-    private VisualElement m_TabContentContainer;
-    private VisualElement m_BehaviorContent;
-    private VisualElement m_TerminalContent;
-    private VisualElement m_FileOpeningContent;
-    private VisualElement m_MaintenanceContent;
 
     static NeovimSettingsWindow()
     {
@@ -49,106 +38,37 @@ namespace Neovim.Editor
 
     public void CreateGUI()
     {
-      // Create root container
-      var root = new VisualElement();
-      root.style.flexDirection = FlexDirection.Column;
-      root.style.flexGrow = 1;
-      rootVisualElement.Add(root);
+      // Create TabView
+      var tabView = new TabView();
+      tabView.style.flexGrow = 1;
 
-      // Create tab toolbar
-      var toolbar = new Toolbar();
-      toolbar.style.height = 30;
-      root.Add(toolbar);
+      // Tab 1: Behavior
+      var behaviorTab = new VisualElement { name = "BehaviorTab" };
+      CreateBehaviorSection(behaviorTab);
+      tabView.AddTab("Behavior", behaviorTab);
 
-      // Create tab buttons
-      CreateTabButton(toolbar, "Behavior", Tab.Behavior, m_CurrentTab == Tab.Behavior);
-      CreateTabButton(toolbar, "Terminal", Tab.Terminal, m_CurrentTab == Tab.Terminal);
-      CreateTabButton(toolbar, "File Opening", Tab.FileOpening, m_CurrentTab == Tab.FileOpening);
-      CreateTabButton(toolbar, "Maintenance", Tab.Maintenance, m_CurrentTab == Tab.Maintenance);
+      // Tab 2: Terminal
+      var terminalTab = new VisualElement { name = "TerminalTab" };
+      CreateTerminalSection(terminalTab);
+      tabView.AddTab("Terminal", terminalTab);
 
-      // Tab content container
-      m_TabContentContainer = new VisualElement();
-      m_TabContentContainer.style.flexGrow = 1;
-      m_TabContentContainer.style.paddingTop = 10;
-      m_TabContentContainer.style.paddingBottom = 10;
-      m_TabContentContainer.style.paddingLeft = 10;
-      m_TabContentContainer.style.paddingRight = 10;
-      root.Add(m_TabContentContainer);
+      // Tab 3: File Opening
+      var fileOpeningTab = new VisualElement { name = "FileOpeningTab" };
+      CreateFileOpeningSection(fileOpeningTab);
+      tabView.AddTab("File Opening", fileOpeningTab);
 
-      // Create tab content containers
-      m_BehaviorContent = CreateTabContentContainer();
-      m_TerminalContent = CreateTabContentContainer();
-      m_FileOpeningContent = CreateTabContentContainer();
-      m_MaintenanceContent = CreateTabContentContainer();
+      // Tab 4: Maintenance
+      var maintenanceTab = new VisualElement { name = "MaintenanceTab" };
+      CreateMaintenanceSection(maintenanceTab);
+      tabView.AddTab("Maintenance", maintenanceTab);
 
-      // Populate tab contents
-      CreateBehaviorSection(m_BehaviorContent);
-      CreateTerminalSection(m_TerminalContent);
-      CreateFileOpeningSection(m_FileOpeningContent);
-      CreateMaintenanceSection(m_MaintenanceContent);
-
-      // Show initial tab
-      ShowTab(m_CurrentTab);
-    }
-
-    private VisualElement CreateTabContentContainer()
-    {
-      var container = new VisualElement();
-      container.style.flexGrow = 1;
-      container.style.display = DisplayStyle.None;
-      return container;
-    }
-
-    private void CreateTabButton(Toolbar parent, string label, Tab tab, bool isSelected)
-    {
-      var button = new Button(() => ShowTab(tab))
-      {
-        text = label,
-        style =
-        {
-          flexGrow = 1,
-          unityFontStyleAndWeight = isSelected ? FontStyle.Bold : FontStyle.Normal,
-          backgroundColor = isSelected ? new Color(0.3f, 0.3f, 0.3f) : new Color(0.2f, 0.2f, 0.2f)
-        }
-      };
-      button.AddToClassList("tab-button");
-      parent.Add(button);
-    }
-
-    private void ShowTab(Tab tab)
-    {
-      m_CurrentTab = tab;
-
-      // Hide all tab contents
-      m_BehaviorContent.style.display = DisplayStyle.None;
-      m_TerminalContent.style.display = DisplayStyle.None;
-      m_FileOpeningContent.style.display = DisplayStyle.None;
-      m_MaintenanceContent.style.display = DisplayStyle.None;
-
-      // Show selected tab content
-      switch (tab)
-      {
-        case Tab.Behavior:
-          m_BehaviorContent.style.display = DisplayStyle.Flex;
-          break;
-        case Tab.Terminal:
-          m_TerminalContent.style.display = DisplayStyle.Flex;
-          break;
-        case Tab.FileOpening:
-          m_FileOpeningContent.style.display = DisplayStyle.Flex;
-          break;
-        case Tab.Maintenance:
-          m_MaintenanceContent.style.display = DisplayStyle.Flex;
-          break;
-      }
-
-      // Recreate GUI to update button states
-      rootVisualElement.Clear();
-      CreateGUI();
+      rootVisualElement.Add(tabView);
     }
 
     private void CreateBehaviorSection(VisualElement container)
     {
+      container.style.padding = 10;
+
       // Kill Nvim on Quit
       var killToggle = new Toggle("Kill Nvim on Quit")
       {
@@ -219,6 +139,8 @@ namespace Neovim.Editor
 
     private void CreateTerminalSection(VisualElement container)
     {
+      container.style.padding = 10;
+
       // Header
       var header = new Label("Terminal Launch Command")
       {
@@ -314,6 +236,8 @@ namespace Neovim.Editor
 
     private void CreateFileOpeningSection(VisualElement container)
     {
+      container.style.padding = 10;
+
       // Two-column layout: info left, jump args right
       var twoColumn = new VisualElement();
       twoColumn.style.flexDirection = FlexDirection.Row;
@@ -380,6 +304,8 @@ namespace Neovim.Editor
 
     private void CreateMaintenanceSection(VisualElement container)
     {
+      container.style.padding = 10;
+
       var title = new Label("Server Management")
       {
         style = { unityFontStyleAndWeight = FontStyle.Bold, fontSize = 14 }
