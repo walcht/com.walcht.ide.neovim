@@ -24,8 +24,11 @@ namespace Neovim.Editor
 
     public static NeovimEditorConfig s_Config = new();
 
+    // Unique identifier for this Unity instance (PID)
+    static readonly string s_InstanceId = Process.GetCurrentProcess().Id.ToString();
+
 #if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-    static string s_ServerSocket = "/tmp/nvimsocket";
+    static string s_ServerSocket => $"/tmp/nvimsocket_{Process.GetCurrentProcess().Id}";
 #else // UNITY_EDITOR_WIN
     // this will be initialized to some "127.0.0.1:<random-port>" because Unix domain sockets on Windows are a bitch
     static string s_ServerSocket;
@@ -99,7 +102,7 @@ namespace Neovim.Editor
 #endif
 
     // terminal launch command template - use this template for adding new launch cmds
-    public static readonly (string, string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}", "{environment}");
+    public static readonly (string, string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}", "{environment}");
 
     // list of neovim launch cmds from popular terminal emulators - this is
     // just a hardcoded list so that non-tech-savy users can just get to
@@ -107,17 +110,17 @@ namespace Neovim.Editor
     public static readonly (string, string, string)[] s_TermLaunchCmds =
 #if UNITY_EDITOR_LINUX
     {
-      ("gnome-terminal", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("ptyxis", "--title \"nvimunity\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("xterm", "-T \"nvimunity\" -e {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("ghostty", "--title=\"nvimunity\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
+      ("gnome-terminal", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("ptyxis", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
     };
 #else  // UNITY_EDITOR_WIN
     {
       // on Powershell, replace the ';' with "`;"
       ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}", "{environment}"),
-      ("alacritty", "--title \"nvimunity\" --command {app} {filePath} --listen {serverSocket}", "{environment}")
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}", "{environment}")
     };
 #endif
 
@@ -295,6 +298,76 @@ fi
 
       NeovimCodeEditor editor = new(s_Generator);
       CodeEditor.Register(editor);
+
+      // Clean up our nvim server instance when Unity quits
+      EditorApplication.quitting += CleanupNvimServer;
+    }
+
+    /// <summary>
+    /// Kill the nvim server instance owned by this Unity process on exit.
+    /// This prevents orphaned nvim processes when Unity crashes.
+    /// Only runs if KillNvimOnQuit is enabled in config (default: false to preserve nvim session).
+    /// </summary>
+    private static void CleanupNvimServer()
+    {
+      // Check if cleanup is enabled - default to false to preserve nvim sessions
+      if (!s_Config.KillNvimOnQuit)
+        return;
+
+#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      string socketPath = s_ServerSocket;
+      var psi = new ProcessStartInfo
+      {
+        FileName = "/bin/sh",
+        Arguments = $"-c \"lsof '{socketPath}' 2>/dev/null | grep LISTEN | awk '{{print $2}}'\"",
+        RedirectStandardOutput = true,
+        UseShellExecute = false,
+        CreateNoWindow = true
+      };
+
+      try
+      {
+        using var p = Process.Start(psi);
+        if (p != null)
+        {
+          string output = p.StandardOutput.ReadToEnd();
+          p.WaitForExit();
+
+          if (!string.IsNullOrWhiteSpace(output) && int.TryParse(output.Trim(), out int pid))
+          {
+            // Kill the nvim process holding our socket
+            var killPsi = new ProcessStartInfo
+            {
+              FileName = "/bin/sh",
+              Arguments = $"-c \"kill {pid} 2>/dev/null; kill -9 {pid} 2>/dev/null\"",
+              UseShellExecute = false,
+              CreateNoWindow = true
+            };
+            using var killP = Process.Start(killPsi);
+            killP?.WaitForExit();
+          }
+        }
+
+        // Clean up socket file
+        var cleanPsi = new ProcessStartInfo
+        {
+          FileName = "/bin/sh",
+          Arguments = $"-c \"rm -f '{socketPath}'\"",
+          UseShellExecute = false,
+          CreateNoWindow = true
+        };
+        using var cleanP = Process.Start(cleanPsi);
+        cleanP?.WaitForExit();
+      }
+      catch (System.Exception)
+      {
+        // Silently fail during cleanup - we're exiting anyway
+      }
+#elif UNITY_EDITOR_WIN
+      // Windows cleanup - kill the nvim process we started
+      // Note: This is harder on Windows without tracking the PID
+      // Users can use the "Kill Orphaned Server" menu option if needed
+#endif
     }
 
     public void CreateIfDoesntExist()
@@ -561,6 +634,7 @@ fi
             .Replace("{app}", app)
             .Replace("{filePath}", string.IsNullOrWhiteSpace(filePath) ? "" : $"\"{filePath}\"")
             .Replace("{serverSocket}", s_ServerSocket)
+            .Replace("{instanceId}", s_InstanceId)
 #if UNITY_EDITOR_WIN
             .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
 #endif
@@ -692,10 +766,10 @@ fi
       {
         case LinuxDesktopEnvironment.X11:
           {
-            string cmd = @"wmctrl -a nvimunity";
+            string cmd = $@"wmctrl -a nvimunity-{s_InstanceId}";
             if (!ProcessUtils.RunShellCmd(cmd, timeout: s_Config.ProcessTimeout))
             {
-              Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+              Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity-{s_InstanceId}'.\n"
                   + $"Failed to execute the cmd: '{cmd}'");
             }
             break;
@@ -703,12 +777,12 @@ fi
         case LinuxDesktopEnvironment.GNOME:
           {
             // a clusterfuck of a mess - TODO: learn gdbus and clean this shit up somehow
-            string cmd = @"gdbus call --session --dest org.gnome.Shell \
+            string cmd = $@"gdbus call --session --dest org.gnome.Shell \
 --object-path /de/lucaswerkmeister/ActivateWindowByTitle \
---method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring 'nvimunity'";
+--method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring 'nvimunity-{s_InstanceId}'";
             if (!ProcessUtils.RunShellCmd(cmd, timeout: s_Config.ProcessTimeout))
             {
-              Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+              Debug.LogWarning($"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity-{s_InstanceId}'.\n"
                   + "Did you logout and login of your GNOME session?\n"
                   + "Did you install the 'activate-window-by-title@lucaswerkmeister.de' GNOME extension?");
             }
