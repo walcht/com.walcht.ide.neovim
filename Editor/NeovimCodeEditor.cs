@@ -527,8 +527,8 @@ fi
         return false;
 
       // only use NeoVim for reasonable file extensions (e.g., do not use NeoVim to open .png files which happens
-      // without this check)
-      if (!Array.Exists(s_SupportedExtensions, e => e.ToLower() == Path.GetExtension(filePath)
+      // without this check). Skip extension check when filePath is empty (e.g., "Assets/Open C# project").
+      if (!string.IsNullOrWhiteSpace(filePath) && !Array.Exists(s_SupportedExtensions, e => e.ToLower() == Path.GetExtension(filePath)
             .TrimStart('.')
             .ToLower()))
         return false;
@@ -559,7 +559,7 @@ fi
             .Replace("{app}", app);
           p.StartInfo.Arguments = termLaunchArgs
             .Replace("{app}", app)
-            .Replace("{filePath}", $"\"{filePath}\"")
+            .Replace("{filePath}", string.IsNullOrWhiteSpace(filePath) ? "" : $"\"{filePath}\"")
             .Replace("{serverSocket}", s_ServerSocket)
 #if UNITY_EDITOR_WIN
             .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
@@ -648,7 +648,8 @@ fi
 #endif
 
       // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding
-      // to the provided filepath
+      // to the provided filepath. Skip when filePath is empty (e.g., "Assets/Open C# project").
+      if (!string.IsNullOrWhiteSpace(filePath))
       {
         int currentMods = Event.current != null ? (int)Event.current.modifiers : 0;
         const int relevantMask = (int)(EventModifiers.Shift | EventModifiers.Control | EventModifiers.Alt);
