@@ -463,6 +463,136 @@ fi
     private const int EDITOR_GUI_ELEMENT_HEIGHT = 37;
 
     private Vector2 m_ScrollViewPos;
+
+    /// <summary>
+    /// Reset the Neovim configuration by deleting the saved EditorPrefs and reinitializing.
+    /// Use this when settings become corrupted or you want to start fresh.
+    /// </summary>
+    public static void ResetConfig()
+    {
+      EditorPrefs.DeleteKey("NvimUnityConfigJson");
+      InitConfig();
+      Debug.Log("[neovim.ide] reset the previously saved neovim config");
+    }
+
+    /// <summary>
+    /// Kill all orphaned nvim server processes that may be left behind after Unity crashes.
+    /// Handles both legacy (/tmp/nvimsocket) and per-instance (/tmp/nvimsocket_<PID>) socket patterns.
+    /// This resolves issues where the plugin hangs because the socket is held by a zombie process.
+    /// </summary>
+    public static void KillOrphanedServer()
+    {
+      int killedCount = 0;
+
+#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      // Find nvim processes listening on Unity nvim sockets (both old and new patterns)
+      var psi = new ProcessStartInfo
+      {
+        FileName = "/bin/sh",
+        Arguments = "-c \"ps aux | grep 'nvim.*--listen.*nvimsocket' | grep -v grep | awk '{print $2}'\"",
+        RedirectStandardOutput = true,
+        UseShellExecute = false,
+        CreateNoWindow = true
+      };
+
+      using var p = Process.Start(psi);
+      if (p != null)
+      {
+        string output = p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+
+        var pids = output.Split(new[] { '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+        foreach (string pidStr in pids)
+        {
+          if (int.TryParse(pidStr, out int pid))
+          {
+            try
+            {
+              // Try SIGTERM first
+              var killPsi = new ProcessStartInfo
+              {
+                FileName = "/bin/sh",
+                Arguments = $"-c \"kill {pid} 2>/dev/null\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+              };
+              using var killP = Process.Start(killPsi);
+              killP?.WaitForExit();
+
+              // Give it a moment, then force kill if still alive
+              System.Threading.Thread.Sleep(100);
+              killPsi.Arguments = $"-c \"kill -9 {pid} 2>/dev/null\"";
+              using var killP2 = Process.Start(killPsi);
+              killP2?.WaitForExit();
+
+              killedCount++;
+            }
+            catch (System.Exception e)
+            {
+              Debug.LogWarning($"[neovim.ide] failed to kill nvim process {pid}: {e.Message}");
+            }
+          }
+        }
+      }
+
+      // Also clean up all Unity nvim socket files (both old and new patterns)
+      var cleanPsi = new ProcessStartInfo
+      {
+        FileName = "/bin/sh",
+        Arguments = "-c \"rm -f /tmp/nvimsocket /tmp/nvimsocket_*\"",
+        UseShellExecute = false,
+        CreateNoWindow = true
+      };
+      using var cleanP = Process.Start(cleanPsi);
+      cleanP?.WaitForExit();
+
+#elif UNITY_EDITOR_WIN
+      // Windows: find nvim processes with --listen argument
+      var psi = new ProcessStartInfo
+      {
+        FileName = "powershell",
+        Arguments = "-Command \"Get-Process nvim -ErrorAction SilentlyContinue | Where-Object {$_.Path -like '*--listen*'} | Select-Object -ExpandProperty Id\"",
+        RedirectStandardOutput = true,
+        UseShellExecute = false,
+        CreateNoWindow = true
+      };
+
+      using var p = Process.Start(psi);
+      if (p != null)
+      {
+        string output = p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+
+        var pids = output.Split(new[] { '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+        foreach (string pidStr in pids)
+        {
+          if (int.TryParse(pidStr, out int pid))
+          {
+            try
+            {
+              var proc = Process.GetProcessById(pid);
+              proc.Kill();
+              killedCount++;
+            }
+            catch (System.Exception e)
+            {
+              Debug.LogWarning($"[neovim.ide] failed to kill nvim process {pid}: {e.Message}");
+            }
+          }
+        }
+      }
+#endif
+
+      if (killedCount > 0)
+      {
+        Debug.Log($"[neovim.ide] killed {killedCount} orphaned nvim server process(es). You can now open files in Unity.");
+      }
+      else
+      {
+        Debug.Log("[neovim.ide] no orphaned nvim server processes found. The plugin should work normally.");
+      }
+    }
+
     // Unity calls this method when it populates "Preferences/External Tools"
     // in order to allow the code editor to generate necessary GUI. For example,
     // when creating an an argument field for modifying the arguments sent to
@@ -518,6 +648,21 @@ fi
         RegenerateProjectFiles();
       }
       EditorGUI.indentLevel--;
+
+      // ==================== Neovim Settings Button ====================
+      EditorGUILayout.Space();
+      EditorGUILayout.LabelField("Neovim Settings", EditorStyles.boldLabel);
+
+      EditorGUILayout.HelpBox(
+        "Configure all Neovim-specific settings including terminal launch, file opening behavior, and server management.",
+        MessageType.Info
+      );
+
+      if (GUILayout.Button("Open Neovim Settings", GUILayout.Height(30)))
+      {
+        NeovimSettingsWindow.ShowWindow();
+      }
+      // ===============================================================
     }
 
 
