@@ -11,6 +11,10 @@ namespace Neovim.Editor
   {
     private const string k_WindowTitle = "Neovim Settings";
 
+    // Tab tracking
+    private enum Tab { Behavior, Terminal, FileOpening, Maintenance }
+    private Tab m_CurrentTab = Tab.Behavior;
+
     // File Opening tab working copy
     private List<ModifierBinding> m_Bindings;
     private Label m_BindingInfoName;
@@ -18,6 +22,13 @@ namespace Neovim.Editor
     private VisualElement m_BindingRows;
     private static readonly List<string> s_TemplateNames;
     private const string k_CustomLabel = "Custom";
+
+    // Tab content containers
+    private VisualElement m_TabContentContainer;
+    private VisualElement m_BehaviorContent;
+    private VisualElement m_TerminalContent;
+    private VisualElement m_FileOpeningContent;
+    private VisualElement m_MaintenanceContent;
 
     static NeovimSettingsWindow()
     {
@@ -38,67 +49,102 @@ namespace Neovim.Editor
 
     public void CreateGUI()
     {
-      // Use a ScrollView with foldout sections instead of TabView
-      var scrollView = new ScrollView(ScrollViewMode.Vertical);
-      scrollView.style.flexGrow = 1;
-
+      // Create root container
       var root = new VisualElement();
       root.style.flexDirection = FlexDirection.Column;
-      root.style.paddingTop = 10;
-      root.style.paddingBottom = 10;
-      root.style.paddingLeft = 10;
-      root.style.paddingRight = 10;
+      root.style.flexGrow = 1;
+      rootVisualElement.Add(root);
 
-      scrollView.Add(root);
+      // Create tab toolbar
+      var toolbar = new Toolbar();
+      toolbar.style.height = 30;
+      root.Add(toolbar);
 
-      // Behavior Section
-      var behaviorFoldout = new Foldout { text = "Behavior Settings", value = true };
-      root.Add(behaviorFoldout);
-      var behaviorContent = new VisualElement();
-      behaviorContent.style.marginLeft = 10;
-      behaviorContent.style.marginBottom = 10;
-      behaviorContent.style.paddingTop = 5;
-      root.Add(behaviorContent);
-      behaviorFoldout.RegisterValueChangedCallback(e => behaviorContent.style.display = e.newValue ? DisplayStyle.Flex : DisplayStyle.None);
-      CreateBehaviorSection(behaviorContent);
+      // Create tab buttons
+      CreateTabButton(toolbar, "Behavior", Tab.Behavior, m_CurrentTab == Tab.Behavior);
+      CreateTabButton(toolbar, "Terminal", Tab.Terminal, m_CurrentTab == Tab.Terminal);
+      CreateTabButton(toolbar, "File Opening", Tab.FileOpening, m_CurrentTab == Tab.FileOpening);
+      CreateTabButton(toolbar, "Maintenance", Tab.Maintenance, m_CurrentTab == Tab.Maintenance);
 
-      // Terminal Section
-      var terminalFoldout = new Foldout { text = "Terminal Launch Command", value = false };
-      root.Add(terminalFoldout);
-      var terminalContent = new VisualElement();
-      terminalContent.style.marginLeft = 10;
-      terminalContent.style.marginBottom = 10;
-      terminalContent.style.paddingTop = 5;
-      terminalContent.style.display = DisplayStyle.None;
-      root.Add(terminalContent);
-      terminalFoldout.RegisterValueChangedCallback(e => terminalContent.style.display = e.newValue ? DisplayStyle.Flex : DisplayStyle.None);
-      CreateTerminalSection(terminalContent);
+      // Tab content container
+      m_TabContentContainer = new VisualElement();
+      m_TabContentContainer.style.flexGrow = 1;
+      m_TabContentContainer.style.paddingTop = 10;
+      m_TabContentContainer.style.paddingBottom = 10;
+      m_TabContentContainer.style.paddingLeft = 10;
+      m_TabContentContainer.style.paddingRight = 10;
+      root.Add(m_TabContentContainer);
 
-      // File Opening Section
-      var fileOpeningFoldout = new Foldout { text = "File Opening Settings", value = false };
-      root.Add(fileOpeningFoldout);
-      var fileOpeningContent = new VisualElement();
-      fileOpeningContent.style.marginLeft = 10;
-      fileOpeningContent.style.marginBottom = 10;
-      fileOpeningContent.style.paddingTop = 5;
-      fileOpeningContent.style.display = DisplayStyle.None;
-      root.Add(fileOpeningContent);
-      fileOpeningFoldout.RegisterValueChangedCallback(e => fileOpeningContent.style.display = e.newValue ? DisplayStyle.Flex : DisplayStyle.None);
-      CreateFileOpeningSection(fileOpeningContent);
+      // Create tab content containers
+      m_BehaviorContent = CreateTabContentContainer();
+      m_TerminalContent = CreateTabContentContainer();
+      m_FileOpeningContent = CreateTabContentContainer();
+      m_MaintenanceContent = CreateTabContentContainer();
 
-      // Maintenance Section
-      var maintenanceFoldout = new Foldout { text = "Server Maintenance", value = false };
-      root.Add(maintenanceFoldout);
-      var maintenanceContent = new VisualElement();
-      maintenanceContent.style.marginLeft = 10;
-      maintenanceContent.style.marginBottom = 10;
-      maintenanceContent.style.paddingTop = 5;
-      maintenanceContent.style.display = DisplayStyle.None;
-      root.Add(maintenanceContent);
-      maintenanceFoldout.RegisterValueChangedCallback(e => maintenanceContent.style.display = e.newValue ? DisplayStyle.Flex : DisplayStyle.None);
-      CreateMaintenanceSection(maintenanceContent);
+      // Populate tab contents
+      CreateBehaviorSection(m_BehaviorContent);
+      CreateTerminalSection(m_TerminalContent);
+      CreateFileOpeningSection(m_FileOpeningContent);
+      CreateMaintenanceSection(m_MaintenanceContent);
 
-      rootVisualElement.Add(scrollView);
+      // Show initial tab
+      ShowTab(m_CurrentTab);
+    }
+
+    private VisualElement CreateTabContentContainer()
+    {
+      var container = new VisualElement();
+      container.style.flexGrow = 1;
+      container.style.display = DisplayStyle.None;
+      return container;
+    }
+
+    private void CreateTabButton(Toolbar parent, string label, Tab tab, bool isSelected)
+    {
+      var button = new Button(() => ShowTab(tab))
+      {
+        text = label,
+        style =
+        {
+          flexGrow = 1,
+          unityFontStyleAndWeight = isSelected ? FontStyle.Bold : FontStyle.Normal,
+          backgroundColor = isSelected ? new Color(0.3f, 0.3f, 0.3f) : new Color(0.2f, 0.2f, 0.2f)
+        }
+      };
+      button.AddToClassList("tab-button");
+      parent.Add(button);
+    }
+
+    private void ShowTab(Tab tab)
+    {
+      m_CurrentTab = tab;
+
+      // Hide all tab contents
+      m_BehaviorContent.style.display = DisplayStyle.None;
+      m_TerminalContent.style.display = DisplayStyle.None;
+      m_FileOpeningContent.style.display = DisplayStyle.None;
+      m_MaintenanceContent.style.display = DisplayStyle.None;
+
+      // Show selected tab content
+      switch (tab)
+      {
+        case Tab.Behavior:
+          m_BehaviorContent.style.display = DisplayStyle.Flex;
+          break;
+        case Tab.Terminal:
+          m_TerminalContent.style.display = DisplayStyle.Flex;
+          break;
+        case Tab.FileOpening:
+          m_FileOpeningContent.style.display = DisplayStyle.Flex;
+          break;
+        case Tab.Maintenance:
+          m_MaintenanceContent.style.display = DisplayStyle.Flex;
+          break;
+      }
+
+      // Recreate GUI to update button states
+      rootVisualElement.Clear();
+      CreateGUI();
     }
 
     private void CreateBehaviorSection(VisualElement container)
@@ -180,26 +226,45 @@ namespace Neovim.Editor
       };
       container.Add(header);
 
-      // Current values display (read-only for now, can be changed via menu if needed)
-      var cmdLabel = new Label("Command:");
-      container.Add(cmdLabel);
-      var cmdField = new TextField { value = NeovimCodeEditor.s_Config.TermLaunchCmd ?? "", isReadOnly = true };
+      // Template dropdown
+      var templateNames = NeovimCodeEditor.s_TermLaunchCmds
+        .Select((t, _) => t.Item1)
+        .Append("Custom")
+        .ToList();
+      var templateDropdown = new DropdownField("Template", templateNames, 0);
+      templateDropdown.SetValueWithoutNotify("Select template...");
+      templateDropdown.style.marginTop = 5;
+      container.Add(templateDropdown);
+
+      // Command field
+      var cmdField = new TextField
+      {
+        label = "Command",
+        tooltip = "Executable that will be executed when opening a file for the first time. Must be accessible via PATH.",
+        value = NeovimCodeEditor.s_Config.TermLaunchCmd ?? ""
+      };
       container.Add(cmdField);
 
-      var argsLabel = new Label("Arguments:");
-      container.Add(argsLabel);
-      var argsField = new TextField { value = NeovimCodeEditor.s_Config.TermLaunchArgs ?? "", isReadOnly = true };
+      // Arguments field
+      var argsField = new TextField
+      {
+        label = "Arguments",
+        tooltip = "Arguments passed to the executable. Use {app}, {filePath}, {serverSocket}, {instanceId} as placeholders.",
+        value = NeovimCodeEditor.s_Config.TermLaunchArgs ?? ""
+      };
       container.Add(argsField);
 
-      var envLabel = new Label("Environment Variables:");
-      container.Add(envLabel);
-      var envField = new TextField { value = NeovimCodeEditor.s_Config.TermLaunchEnv ?? "", isReadOnly = true };
+      // Environment field
+      var envField = new TextField
+      {
+        label = "Environment Variables",
+        tooltip = "Space-separated list: ENV_0=VALUE_0 ENV_1=VALUE_1",
+        value = NeovimCodeEditor.s_Config.TermLaunchEnv ?? ""
+      };
       container.Add(envField);
 
-      container.Add(new VisualElement { style = { height = 10 } });
-
-      var helpMsg = new HelpBox(
-        "To change terminal settings, use: Neovim → Change Terminal Launch Cmd\n\n" +
+      // Placeholder reference
+      var placeholderHelp = new HelpBox(
         "Placeholders:\n" +
         "{app} - Neovim executable path\n" +
         "{filePath} - Path to file being opened\n" +
@@ -211,7 +276,40 @@ namespace Neovim.Editor
         "{environment} - Environment variables from the field above",
         HelpBoxMessageType.Info
       );
-      container.Add(helpMsg);
+      placeholderHelp.style.marginTop = 5;
+      container.Add(placeholderHelp);
+
+      // Status message
+      var statusLabel = new Label { style = { color = Color.green, marginTop = 5 } };
+      container.Add(statusLabel);
+
+      // Template dropdown callback
+      templateDropdown.RegisterValueChangedCallback(e =>
+      {
+        if (e.newValue == "Custom") return;
+        var template = NeovimCodeEditor.s_TermLaunchCmds.First(t => t.Item1 == e.newValue);
+        cmdField.value = template.Item1;
+        argsField.value = template.Item2;
+        envField.value = template.Item3;
+      });
+
+      // Update button
+      var updateBtn = new Button(() =>
+      {
+        if (!NeovimCodeEditor.TryChangeTermLaunchCmd((cmdField.value, argsField.value, envField.value)))
+        {
+          statusLabel.text = "[ERROR] Terminal not available. Check if command exists in PATH.";
+          statusLabel.style.color = Color.red;
+        }
+        else
+        {
+          statusLabel.text = "[INFO] Terminal launch command updated successfully.";
+          statusLabel.style.color = Color.green;
+        }
+      })
+      { text = "Update" };
+      updateBtn.style.marginTop = 5;
+      container.Add(updateBtn);
     }
 
     private void CreateFileOpeningSection(VisualElement container)
@@ -241,10 +339,10 @@ namespace Neovim.Editor
       );
       leftColumn.Add(infoMsg);
 
-      // RIGHT COLUMN: Jump args
+      // RIGHT COLUMN: Jump args - 50% wider (was 300, now 450)
       var rightColumn = new VisualElement
       {
-        style = { width = 300, flexDirection = FlexDirection.Column }
+        style = { width = 450, flexDirection = FlexDirection.Column }
       };
       twoColumn.Add(rightColumn);
 
@@ -334,31 +432,7 @@ namespace Neovim.Editor
       forceResetBtn.style.marginTop = 10;
       container.Add(forceResetBtn);
 
-      // Separator
-      container.Add(new VisualElement { style = { height = 20 } });
-
-      // Regenerate Project Files button
-      var regenTitle = new Label("Project Generation")
-      {
-        style = { unityFontStyleAndWeight = FontStyle.Bold, fontSize = 14 }
-      };
-      container.Add(regenTitle);
-
-      var regenHelp = new HelpBox(
-        "Regenerate .csproj files for the current project.",
-        HelpBoxMessageType.None
-      );
-      regenHelp.style.marginTop = 5;
-      container.Add(regenHelp);
-
-      var regenBtn = new Button(() =>
-      {
-        AssetDatabase.Refresh();
-        Debug.Log("[Neovim Settings] Project regeneration triggered.");
-      })
-      { text = "Regenerate Project Files" };
-      regenBtn.style.marginTop = 10;
-      container.Add(regenBtn);
+      // NOTE: Regenerate Project Files removed - already exists in External Tools preferences
     }
   }
 }
