@@ -26,48 +26,60 @@ namespace Neovim.Editor
       tabView.style.flexGrow = 1;
 
       // Tab 1: Behavior
-      var behaviorTab = new Tab { text = "Behavior" };
+      var behaviorTab = new Tab();
+      var behaviorLabel = new Label();
+      behaviorLabel.text = "Behavior";
+      behaviorTab.Add(behaviorLabel);
+      tabView.Add(behaviorTab);
       var behaviorContent = new VisualElement();
       behaviorContent.style.paddingTop = 10;
       behaviorContent.style.paddingBottom = 10;
       behaviorContent.style.paddingLeft = 10;
       behaviorContent.style.paddingRight = 10;
       CreateBehaviorSection(behaviorContent);
-      behaviorTab.Add(behaviorContent);
-      tabView.Add(behaviorTab);
+      tabView.Add(behaviorContent);
 
       // Tab 2: Terminal
-      var terminalTab = new Tab { text = "Terminal" };
+      var terminalTab = new Tab();
+      var terminalLabel = new Label();
+      terminalLabel.text = "Terminal";
+      terminalTab.Add(terminalLabel);
+      tabView.Add(terminalTab);
       var terminalContent = new VisualElement();
       terminalContent.style.paddingTop = 10;
       terminalContent.style.paddingBottom = 10;
       terminalContent.style.paddingLeft = 10;
       terminalContent.style.paddingRight = 10;
       CreateTerminalSection(terminalContent);
-      terminalTab.Add(terminalContent);
-      tabView.Add(terminalTab);
+      tabView.Add(terminalContent);
 
       // Tab 3: File Opening
-      var fileOpeningTab = new Tab { text = "File Opening" };
+      var fileOpeningTab = new Tab();
+      var fileOpeningLabel = new Label();
+      fileOpeningLabel.text = "File Opening";
+      fileOpeningTab.Add(fileOpeningLabel);
+      tabView.Add(fileOpeningTab);
       var fileOpeningContent = new VisualElement();
       fileOpeningContent.style.paddingTop = 10;
       fileOpeningContent.style.paddingBottom = 10;
       fileOpeningContent.style.paddingLeft = 10;
       fileOpeningContent.style.paddingRight = 10;
       CreateFileOpeningSection(fileOpeningContent);
-      fileOpeningTab.Add(fileOpeningContent);
-      tabView.Add(fileOpeningTab);
+      tabView.Add(fileOpeningContent);
 
       // Tab 4: Maintenance
-      var maintenanceTab = new Tab { text = "Maintenance" };
+      var maintenanceTab = new Tab();
+      var maintenanceLabel = new Label();
+      maintenanceLabel.text = "Maintenance";
+      maintenanceTab.Add(maintenanceLabel);
+      tabView.Add(maintenanceTab);
       var maintenanceContent = new VisualElement();
       maintenanceContent.style.paddingTop = 10;
       maintenanceContent.style.paddingBottom = 10;
       maintenanceContent.style.paddingLeft = 10;
       maintenanceContent.style.paddingRight = 10;
       CreateMaintenanceSection(maintenanceContent);
-      maintenanceTab.Add(maintenanceContent);
-      tabView.Add(maintenanceTab);
+      tabView.Add(maintenanceContent);
 
       rootVisualElement.Add(tabView);
     }
