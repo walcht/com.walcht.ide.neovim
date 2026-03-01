@@ -3,29 +3,12 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
 using System.Linq;
-using System.Collections.Generic;
 
 namespace Neovim.Editor
 {
   public class NeovimSettingsWindow : EditorWindow
   {
     private const string k_WindowTitle = "Neovim Settings";
-
-    // File Opening tab working copy
-    private List<ModifierBinding> m_Bindings;
-    private Label m_BindingInfoName;
-    private Label m_BindingInfoDesc;
-    private VisualElement m_BindingRows;
-    private static readonly List<string> s_TemplateNames;
-    private const string k_CustomLabel = "Custom";
-
-    static NeovimSettingsWindow()
-    {
-      s_TemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
-        .Select(t => t.Name)
-        .Append(k_CustomLabel)
-        .ToList();
-    }
 
     [MenuItem("Window/Neovim")]
     public static void ShowWindow()
@@ -43,32 +26,54 @@ namespace Neovim.Editor
       tabView.style.flexGrow = 1;
 
       // Tab 1: Behavior
-      var behaviorTab = new VisualElement { name = "BehaviorTab" };
-      CreateBehaviorSection(behaviorTab);
-      tabView.AddTab("Behavior", behaviorTab);
+      var behaviorTab = new Tab { text = "Behavior" };
+      var behaviorContent = new VisualElement();
+      behaviorContent.style.paddingTop = 10;
+      behaviorContent.style.paddingBottom = 10;
+      behaviorContent.style.paddingLeft = 10;
+      behaviorContent.style.paddingRight = 10;
+      CreateBehaviorSection(behaviorContent);
+      behaviorTab.Add(behaviorContent);
+      tabView.Add(behaviorTab);
 
       // Tab 2: Terminal
-      var terminalTab = new VisualElement { name = "TerminalTab" };
-      CreateTerminalSection(terminalTab);
-      tabView.AddTab("Terminal", terminalTab);
+      var terminalTab = new Tab { text = "Terminal" };
+      var terminalContent = new VisualElement();
+      terminalContent.style.paddingTop = 10;
+      terminalContent.style.paddingBottom = 10;
+      terminalContent.style.paddingLeft = 10;
+      terminalContent.style.paddingRight = 10;
+      CreateTerminalSection(terminalContent);
+      terminalTab.Add(terminalContent);
+      tabView.Add(terminalTab);
 
       // Tab 3: File Opening
-      var fileOpeningTab = new VisualElement { name = "FileOpeningTab" };
-      CreateFileOpeningSection(fileOpeningTab);
-      tabView.AddTab("File Opening", fileOpeningTab);
+      var fileOpeningTab = new Tab { text = "File Opening" };
+      var fileOpeningContent = new VisualElement();
+      fileOpeningContent.style.paddingTop = 10;
+      fileOpeningContent.style.paddingBottom = 10;
+      fileOpeningContent.style.paddingLeft = 10;
+      fileOpeningContent.style.paddingRight = 10;
+      CreateFileOpeningSection(fileOpeningContent);
+      fileOpeningTab.Add(fileOpeningContent);
+      tabView.Add(fileOpeningTab);
 
       // Tab 4: Maintenance
-      var maintenanceTab = new VisualElement { name = "MaintenanceTab" };
-      CreateMaintenanceSection(maintenanceTab);
-      tabView.AddTab("Maintenance", maintenanceTab);
+      var maintenanceTab = new Tab { text = "Maintenance" };
+      var maintenanceContent = new VisualElement();
+      maintenanceContent.style.paddingTop = 10;
+      maintenanceContent.style.paddingBottom = 10;
+      maintenanceContent.style.paddingLeft = 10;
+      maintenanceContent.style.paddingRight = 10;
+      CreateMaintenanceSection(maintenanceContent);
+      maintenanceTab.Add(maintenanceContent);
+      tabView.Add(maintenanceTab);
 
       rootVisualElement.Add(tabView);
     }
 
     private void CreateBehaviorSection(VisualElement container)
     {
-      container.style.padding = 10;
-
       // Kill Nvim on Quit
       var killToggle = new Toggle("Kill Nvim on Quit")
       {
@@ -139,8 +144,6 @@ namespace Neovim.Editor
 
     private void CreateTerminalSection(VisualElement container)
     {
-      container.style.padding = 10;
-
       // Header
       var header = new Label("Terminal Launch Command")
       {
@@ -236,8 +239,6 @@ namespace Neovim.Editor
 
     private void CreateFileOpeningSection(VisualElement container)
     {
-      container.style.padding = 10;
-
       // Two-column layout: info left, jump args right
       var twoColumn = new VisualElement();
       twoColumn.style.flexDirection = FlexDirection.Row;
@@ -304,8 +305,6 @@ namespace Neovim.Editor
 
     private void CreateMaintenanceSection(VisualElement container)
     {
-      container.style.padding = 10;
-
       var title = new Label("Server Management")
       {
         style = { unityFontStyleAndWeight = FontStyle.Bold, fontSize = 14 }
