@@ -3,12 +3,30 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace Neovim.Editor
 {
   public class NeovimSettingsWindow : EditorWindow
   {
     private const string k_WindowTitle = "Neovim Settings";
+    private const string k_CustomLabel = "Custom";
+
+    // File Opening section state
+    private List<ModifierBinding> m_Bindings;
+    private VisualElement m_BindingRows;
+    private Label m_InfoName;
+    private Label m_InfoDesc;
+
+    private static readonly List<string> s_TemplateNames;
+
+    static NeovimSettingsWindow()
+    {
+      s_TemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
+        .Select(t => t.Name)
+        .Append(k_CustomLabel)
+        .ToList();
+    }
 
     [MenuItem("Window/Neovim")]
     public static void ShowWindow()
@@ -239,43 +257,141 @@ namespace Neovim.Editor
 
     private void CreateFileOpeningSection(VisualElement container)
     {
-      // Two-column layout: info left, jump args right
-      var twoColumn = new VisualElement();
-      twoColumn.style.flexDirection = FlexDirection.Row;
-      container.Add(twoColumn);
+      // Deep-copy bindings so we don't mutate config until user clicks Apply
+      m_Bindings = NeovimCodeEditor.s_Config.ModifierBindings
+        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
+        .ToList();
 
-      // LEFT COLUMN: Info
-      var leftColumn = new VisualElement
+      // ── Two-panel layout ───────────────────────────────────────────────────
+      var twoPanel = new VisualElement();
+      twoPanel.style.flexDirection = FlexDirection.Row;
+      twoPanel.style.flexGrow = 1;
+      container.Add(twoPanel);
+
+      // ── LEFT panel: Modifier Bindings ───────────────────────────────────────
+      var leftPanel = new VisualElement();
+      leftPanel.style.flexGrow = 1;
+      leftPanel.style.flexDirection = FlexDirection.Column;
+      leftPanel.style.borderRightWidth = 1;
+      leftPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
+      leftPanel.style.paddingRight = 4;
+
+      var leftTitle = new Label("Modifier Bindings");
+      leftTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      leftTitle.style.marginBottom = 4;
+      leftTitle.style.marginTop = 4;
+      leftTitle.style.marginLeft = 4;
+      leftPanel.Add(leftTitle);
+
+      var windowDesc = new Label("Configure how Neovim opens files when clicked in Unity, per modifier key:");
+      windowDesc.style.whiteSpace = WhiteSpace.Normal;
+      windowDesc.style.marginBottom = 6;
+      windowDesc.style.marginLeft = 4;
+      windowDesc.style.fontSize = 10;
+      leftPanel.Add(windowDesc);
+
+      var scrollView = new ScrollView(ScrollViewMode.Vertical);
+      scrollView.style.flexGrow = 1;
+
+      m_BindingRows = new VisualElement();
+      m_BindingRows.style.flexDirection = FlexDirection.Column;
+      scrollView.Add(m_BindingRows);
+      leftPanel.Add(scrollView);
+
+      // Populate binding rows
+      RebuildBindingRows();
+
+      // Bottom toolbar: [+] Add binding + [Apply]
+      var toolbar = new VisualElement();
+      toolbar.style.flexDirection = FlexDirection.Row;
+      toolbar.style.justifyContent = Justify.SpaceBetween;
+      toolbar.style.marginTop = 6;
+      toolbar.style.marginBottom = 4;
+      toolbar.style.marginLeft = 4;
+      toolbar.style.marginRight = 4;
+
+      var addBtn = new Button(() =>
       {
-        style = { flexGrow = 1, flexDirection = FlexDirection.Column, paddingRight = 10 }
-      };
-      twoColumn.Add(leftColumn);
+        m_Bindings.Add(new ModifierBinding { Modifiers = (int)EventModifiers.Shift, Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args });
+        RebuildBindingRows();
+      })
+      { text = "+ Add binding" };
 
-      var infoTitle = new Label("Open-File Request Args")
+      var applyBtn = new Button(() =>
       {
-        style = { unityFontStyleAndWeight = FontStyle.Bold }
-      };
-      leftColumn.Add(infoTitle);
+        NeovimCodeEditor.s_Config.ModifierBindings = m_Bindings
+          .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
+          .ToList();
+        NeovimCodeEditor.s_Config.Save();
+      })
+      { text = "Apply" };
 
-      var infoMsg = new HelpBox(
-        "To configure modifier-based file opening behavior (e.g., Shift+Click to open in new tab),\n" +
-        "use: Neovim → Change Open-File Request Args",
-        HelpBoxMessageType.Info
-      );
-      leftColumn.Add(infoMsg);
+      toolbar.Add(addBtn);
+      toolbar.Add(applyBtn);
+      leftPanel.Add(toolbar);
 
-      // RIGHT COLUMN: Jump args - 50% wider (was 300, now 450)
-      var rightColumn = new VisualElement
-      {
-        style = { width = 450, flexDirection = FlexDirection.Column }
-      };
-      twoColumn.Add(rightColumn);
+      // ── RIGHT panel: Template Info + Jump args ─────────────────────────────
+      var rightPanel = new VisualElement();
+      rightPanel.style.width = 280;
+      rightPanel.style.flexShrink = 0;
+      rightPanel.style.flexDirection = FlexDirection.Column;
+      rightPanel.style.paddingLeft = 8;
+      rightPanel.style.paddingTop = 8;
+      rightPanel.style.paddingRight = 4;
 
-      var jumpTitle = new Label("Jump-to-Cursor Arguments")
-      {
-        style = { unityFontStyleAndWeight = FontStyle.Bold }
-      };
-      rightColumn.Add(jumpTitle);
+      // Template Info section
+      var rightTitle = new Label("Template Info");
+      rightTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      rightTitle.style.marginBottom = 6;
+      rightPanel.Add(rightTitle);
+
+      m_InfoName = new Label();
+      m_InfoName.style.unityFontStyleAndWeight = FontStyle.Bold;
+      m_InfoName.style.marginBottom = 4;
+      m_InfoName.style.whiteSpace = WhiteSpace.Normal;
+      rightPanel.Add(m_InfoName);
+
+      m_InfoDesc = new Label();
+      m_InfoDesc.style.whiteSpace = WhiteSpace.Normal;
+      m_InfoDesc.style.flexWrap = Wrap.Wrap;
+      rightPanel.Add(m_InfoDesc);
+
+      SetInfoPanel(null);
+
+      // Separator
+      var separator = new VisualElement();
+      separator.style.borderTopWidth = 1;
+      separator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
+      separator.style.marginTop = 8;
+      separator.style.marginBottom = 6;
+      rightPanel.Add(separator);
+
+      // Placeholder reference
+      var placeholderTitle = new Label("Open-File Placeholders");
+      placeholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      placeholderTitle.style.marginBottom = 4;
+      rightPanel.Add(placeholderTitle);
+
+      var placeholderInfo = new Label(
+        "{filePath} — path to the file being opened.\n\n"
+        + "{serverSocket} — socket used to communicate with the Neovim server (Unix domain socket on Linux, TCP address on Windows).");
+      placeholderInfo.style.whiteSpace = WhiteSpace.Normal;
+      placeholderInfo.style.flexWrap = Wrap.Wrap;
+      placeholderInfo.style.fontSize = 10;
+      rightPanel.Add(placeholderInfo);
+
+      // Jump-to-Cursor Arguments section
+      var jumpSeparator = new VisualElement();
+      jumpSeparator.style.borderTopWidth = 1;
+      jumpSeparator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
+      jumpSeparator.style.marginTop = 12;
+      jumpSeparator.style.marginBottom = 6;
+      rightPanel.Add(jumpSeparator);
+
+      var jumpTitle = new Label("Jump-to-Cursor Arguments");
+      jumpTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      jumpTitle.style.marginBottom = 4;
+      rightPanel.Add(jumpTitle);
 
       var jumpField = new TextField
       {
@@ -283,15 +399,15 @@ namespace Neovim.Editor
         tooltip = "Arguments when jumping to a specific line/column in Neovim.",
         value = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs
       };
-      rightColumn.Add(jumpField);
+      rightPanel.Add(jumpField);
 
       var jumpHelp = new Label(
         "Placeholders:\n{serverSocket} - Socket for Neovim communication\n{line} - Line number\n{column} - Column number"
       )
       {
-        style = { fontSize = 10, whiteSpace = WhiteSpace.Normal, marginTop = 5 }
+        style = { fontSize = 10, whiteSpace = WhiteSpace.Normal, marginTop = 2 }
       };
-      rightColumn.Add(jumpHelp);
+      rightPanel.Add(jumpHelp);
 
       var updateJumpBtn = new Button(() =>
       {
@@ -300,7 +416,148 @@ namespace Neovim.Editor
       })
       { text = "Update" };
       updateJumpBtn.style.marginTop = 5;
-      rightColumn.Add(updateJumpBtn);
+      rightPanel.Add(updateJumpBtn);
+
+      twoPanel.Add(leftPanel);
+      twoPanel.Add(rightPanel);
+    }
+
+    private void RebuildBindingRows()
+    {
+      m_BindingRows.Clear();
+
+      for (int i = 0; i < m_Bindings.Count; i++)
+      {
+        int idx = i; // capture for closure
+        var binding = m_Bindings[i];
+        bool isDefault = binding.Modifiers == 0;
+
+        var row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Column;
+        row.style.marginBottom = 6;
+        row.style.marginLeft = 4;
+        row.style.borderBottomWidth = 1;
+        row.style.borderBottomColor = new Color(0.25f, 0.25f, 0.25f);
+        row.style.paddingBottom = 4;
+
+        // Row header: modifier toggles (skip for default) + delete button
+        var headerRow = new VisualElement();
+        headerRow.style.flexDirection = FlexDirection.Row;
+        headerRow.style.alignItems = Align.Center;
+
+        if (isDefault)
+        {
+          var defaultLabel = new Label("Default (no modifier)");
+          defaultLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+          defaultLabel.style.flexGrow = 1;
+          headerRow.Add(defaultLabel);
+        }
+        else
+        {
+          var modLabel = new Label("Modifiers:");
+          modLabel.style.marginRight = 4;
+          headerRow.Add(modLabel);
+
+          var shiftToggle = new Toggle("Shift") { value = (binding.Modifiers & (int)EventModifiers.Shift) != 0 };
+          var ctrlToggle = new Toggle("Ctrl") { value = (binding.Modifiers & (int)EventModifiers.Control) != 0 };
+          var altToggle = new Toggle("Alt") { value = (binding.Modifiers & (int)EventModifiers.Alt) != 0 };
+
+          foreach (var toggle in new[] { shiftToggle, ctrlToggle, altToggle })
+          {
+            toggle.style.marginRight = 2;
+          }
+
+          System.Action updateMods = () =>
+          {
+            int mods = 0;
+            if (shiftToggle.value) mods |= (int)EventModifiers.Shift;
+            if (ctrlToggle.value) mods |= (int)EventModifiers.Control;
+            if (altToggle.value) mods |= (int)EventModifiers.Alt;
+            m_Bindings[idx].Modifiers = mods;
+          };
+
+          shiftToggle.RegisterValueChangedCallback(_ => updateMods());
+          ctrlToggle.RegisterValueChangedCallback(_ => updateMods());
+          altToggle.RegisterValueChangedCallback(_ => updateMods());
+
+          headerRow.Add(shiftToggle);
+          headerRow.Add(ctrlToggle);
+          headerRow.Add(altToggle);
+
+          // spacer
+          var spacer = new VisualElement();
+          spacer.style.flexGrow = 1;
+          headerRow.Add(spacer);
+
+          var deleteBtn = new Button(() =>
+          {
+            m_Bindings.RemoveAt(idx);
+            RebuildBindingRows();
+          })
+          { text = "×" };
+          deleteBtn.style.color = new Color(1f, 0.4f, 0.4f);
+          headerRow.Add(deleteBtn);
+        }
+
+        row.Add(headerRow);
+
+        // Template dropdown
+        string currentTemplateName = GetTemplateName(binding.Args);
+        var templateDd = new DropdownField("Template", s_TemplateNames, s_TemplateNames.IndexOf(currentTemplateName));
+        templateDd.style.marginTop = 4;
+
+        // Args text field
+        var argsField = new TextField { value = binding.Args };
+        argsField.style.marginTop = 2;
+
+        templateDd.RegisterValueChangedCallback(e =>
+        {
+          if (e.newValue == k_CustomLabel)
+          {
+            SetInfoPanel(null);
+            return;
+          }
+          var template = NeovimCodeEditor.s_OpenFileArgsTemplates
+            .FirstOrDefault(t => t.Name == e.newValue);
+          if (template.Name == null) return;
+          argsField.SetValueWithoutNotify(template.Args);
+          m_Bindings[idx].Args = template.Args;
+          SetInfoPanel(template);
+        });
+
+        argsField.RegisterValueChangedCallback(e =>
+        {
+          m_Bindings[idx].Args = e.newValue;
+          // if user edited manually, update dropdown to Custom
+          if (GetTemplateName(e.newValue) == k_CustomLabel)
+            templateDd.SetValueWithoutNotify(k_CustomLabel);
+        });
+
+        row.Add(templateDd);
+        row.Add(argsField);
+        m_BindingRows.Add(row);
+      }
+    }
+
+    private static string GetTemplateName(string args)
+    {
+      var match = NeovimCodeEditor.s_OpenFileArgsTemplates
+        .FirstOrDefault(t => t.Args == args);
+      return match.Name ?? k_CustomLabel;
+    }
+
+    private void SetInfoPanel((string Args, string Name, string Desc)? template)
+    {
+      if (template == null)
+      {
+        m_InfoName.text = "";
+        m_InfoDesc.text = "Select a template to see its description.";
+      }
+      else
+      {
+        m_InfoName.text = template.Value.Name;
+        m_InfoDesc.text = template.Value.Desc;
+      }
     }
 
     private void CreateMaintenanceSection(VisualElement container)
