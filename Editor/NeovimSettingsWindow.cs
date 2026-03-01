@@ -330,14 +330,58 @@ namespace Neovim.Editor
       toolbar.Add(applyBtn);
       leftPanel.Add(toolbar);
 
-      // ── RIGHT panel: Template Info + Jump args ─────────────────────────────
-      var rightPanel = new VisualElement();
-      rightPanel.style.width = 280;
-      rightPanel.style.flexShrink = 0;
-      rightPanel.style.flexDirection = FlexDirection.Column;
-      rightPanel.style.paddingLeft = 8;
-      rightPanel.style.paddingTop = 8;
-      rightPanel.style.paddingRight = 4;
+      // Jump-to-Cursor Arguments section (for Console double-click)
+      var jumpSeparator = new VisualElement();
+      jumpSeparator.style.borderTopWidth = 1;
+      jumpSeparator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
+      jumpSeparator.style.marginTop = 12;
+      jumpSeparator.style.marginBottom = 6;
+      leftPanel.Add(jumpSeparator);
+
+      var jumpTitle = new Label("Jump-to-Cursor Arguments");
+      jumpTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+      jumpTitle.style.marginBottom = 4;
+      jumpTitle.style.marginLeft = 4;
+      leftPanel.Add(jumpTitle);
+
+      var jumpDesc = new Label("Used when double-clicking Console errors/warnings to jump to exact line/column in Neovim.");
+      jumpDesc.style.whiteSpace = WhiteSpace.Normal;
+      jumpDesc.style.fontSize = 10;
+      jumpDesc.style.marginLeft = 4;
+      jumpDesc.style.marginBottom = 4;
+      leftPanel.Add(jumpDesc);
+
+      var jumpField = new TextField
+      {
+        label = "Arguments",
+        tooltip = "Arguments when jumping to a specific line/column in Neovim.",
+        value = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs
+      };
+      leftPanel.Add(jumpField);
+
+      var jumpHelp = new Label(
+        "Placeholders:\n{serverSocket} - Socket for Neovim communication\n{line} - Line number\n{column} - Column number"
+      )
+      {
+        style = { fontSize = 10, whiteSpace = WhiteSpace.Normal, marginTop = 2, marginLeft = 4 }
+      };
+      leftPanel.Add(jumpHelp);
+
+      var updateJumpBtn = new Button(() =>
+      {
+        NeovimCodeEditor.s_Config.JumpToCursorPositionArgs = jumpField.value;
+        NeovimCodeEditor.s_Config.Save();
+      })
+      { text = "Update Jump Args" };
+      updateJumpBtn.style.marginTop = 5;
+      updateJumpBtn.style.marginLeft = 4;
+      leftPanel.Add(updateJumpBtn);
+
+      // ── RIGHT panel: Template Info ───────────────────────────────────────
+      var rightPanel = new VisualElement
+      {
+        style = { width = 280, flexShrink = 0, flexDirection = FlexDirection.Column, paddingLeft = 8, paddingTop = 8, paddingRight = 4 }
+      };
 
       // Template Info section
       var rightTitle = new Label("Template Info");
@@ -379,44 +423,6 @@ namespace Neovim.Editor
       placeholderInfo.style.flexWrap = Wrap.Wrap;
       placeholderInfo.style.fontSize = 10;
       rightPanel.Add(placeholderInfo);
-
-      // Jump-to-Cursor Arguments section
-      var jumpSeparator = new VisualElement();
-      jumpSeparator.style.borderTopWidth = 1;
-      jumpSeparator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
-      jumpSeparator.style.marginTop = 12;
-      jumpSeparator.style.marginBottom = 6;
-      rightPanel.Add(jumpSeparator);
-
-      var jumpTitle = new Label("Jump-to-Cursor Arguments");
-      jumpTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      jumpTitle.style.marginBottom = 4;
-      rightPanel.Add(jumpTitle);
-
-      var jumpField = new TextField
-      {
-        label = "Arguments",
-        tooltip = "Arguments when jumping to a specific line/column in Neovim.",
-        value = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs
-      };
-      rightPanel.Add(jumpField);
-
-      var jumpHelp = new Label(
-        "Placeholders:\n{serverSocket} - Socket for Neovim communication\n{line} - Line number\n{column} - Column number"
-      )
-      {
-        style = { fontSize = 10, whiteSpace = WhiteSpace.Normal, marginTop = 2 }
-      };
-      rightPanel.Add(jumpHelp);
-
-      var updateJumpBtn = new Button(() =>
-      {
-        NeovimCodeEditor.s_Config.JumpToCursorPositionArgs = jumpField.value;
-        NeovimCodeEditor.s_Config.Save();
-      })
-      { text = "Update" };
-      updateJumpBtn.style.marginTop = 5;
-      rightPanel.Add(updateJumpBtn);
 
       twoPanel.Add(leftPanel);
       twoPanel.Add(rightPanel);
