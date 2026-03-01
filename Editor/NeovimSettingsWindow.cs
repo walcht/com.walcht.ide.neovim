@@ -385,7 +385,85 @@ namespace Neovim.Editor
 
     private void CreateMaintenanceTab(VisualElement container)
     {
-      // Will be implemented in Task 6
+      container.style.padding = 10;
+
+      var title = new Label("Server Management")
+      {
+        style = { unityFontStyleAndWeight = FontStyle.Bold, fontSize = 14 }
+      };
+      container.Add(title);
+
+      var helpBox = new HelpBox(
+        "Use these buttons if nvim becomes unresponsive or Unity crashes.",
+        HelpBoxMessageType.Info
+      );
+      helpBox.style.marginTop = 5;
+      container.Add(helpBox);
+
+      container.Add(new VisualElement { style = { height = 15 } });
+
+      // Button row
+      var buttonRow = new VisualElement
+      {
+        style = { flexDirection = FlexDirection.Row }
+      };
+      container.Add(buttonRow);
+
+      var killBtn = new Button(() =>
+      {
+        NeovimCodeEditor.KillOrphanedServer();
+        Debug.Log("[Neovim Settings] Kill Orphaned Server executed.");
+      })
+      { text = "Kill Orphaned Server" };
+      killBtn.style.flexGrow = 1;
+      killBtn.style.marginRight = 5;
+      buttonRow.Add(killBtn);
+
+      var resetBtn = new Button(() =>
+      {
+        NeovimCodeEditor.ResetConfig();
+        Debug.Log("[Neovim Settings] Reset Config executed.");
+      })
+      { text = "Reset Config" };
+      resetBtn.style.flexGrow = 1;
+      buttonRow.Add(resetBtn);
+
+      // Force Reset button
+      var forceResetBtn = new Button(() =>
+      {
+        NeovimCodeEditor.KillOrphanedServer();
+        NeovimCodeEditor.ResetConfig();
+        Debug.Log("[Neovim Settings] Force Reset executed.");
+      })
+      { text = "Force Reset (Kill + Reset)" };
+      forceResetBtn.style.marginTop = 10;
+      container.Add(forceResetBtn);
+
+      // Separator
+      container.Add(new VisualElement { style = { height = 20 } });
+
+      // Regenerate Project Files button
+      var regenTitle = new Label("Project Generation")
+      {
+        style = { unityFontStyleAndWeight = FontStyle.Bold, fontSize = 14 }
+      };
+      container.Add(regenTitle);
+
+      var regenHelp = new HelpBox(
+        "Regenerate .csproj files for the current project.",
+        HelpBoxMessageType.None
+      );
+      regenHelp.style.marginTop = 5;
+      container.Add(regenHelp);
+
+      var regenBtn = new Button(() =>
+      {
+        AssetDatabase.Refresh();
+        Debug.Log("[Neovim Settings] Project regeneration triggered.");
+      })
+      { text = "Regenerate Project Files" };
+      regenBtn.style.marginTop = 10;
+      container.Add(regenBtn);
     }
 
     private void RebuildBindingRows()
