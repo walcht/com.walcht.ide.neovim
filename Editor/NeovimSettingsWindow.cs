@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace Neovim.Editor
 {
