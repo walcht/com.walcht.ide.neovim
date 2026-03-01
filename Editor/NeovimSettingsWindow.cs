@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
+using System.Linq;
 
 namespace Neovim.Editor
 {
@@ -124,7 +125,97 @@ namespace Neovim.Editor
 
     private void CreateTerminalTab(VisualElement container)
     {
-      // Will be implemented in Task 4
+      container.style.padding = 10;
+
+      // Header
+      var header = new Label("Terminal Launch Command");
+      header.style.unityFontStyleAndWeight = FontStyle.Bold;
+      container.Add(header);
+
+      // Template dropdown
+      var templateNames = NeovimCodeEditor.s_TermLaunchCmds
+        .Select((t, _) => t.Item1)
+        .Append("Custom")
+        .ToList();
+      var templateDropdown = new DropdownField("Template", templateNames, 0);
+      templateDropdown.SetValueWithoutNotify("Select template...");
+      templateDropdown.style.marginTop = 5;
+      container.Add(templateDropdown);
+
+      // Command field
+      var cmdField = new TextField
+      {
+        label = "Command",
+        tooltip = "Executable that will be executed when opening a file for the first time. Must be accessible via PATH.",
+        value = NeovimCodeEditor.s_Config.TermLaunchCmd ?? ""
+      };
+      container.Add(cmdField);
+
+      // Arguments field
+      var argsField = new TextField
+      {
+        label = "Arguments",
+        tooltip = "Arguments passed to the executable. Use {app}, {filePath}, {serverSocket}, {instanceId} as placeholders.",
+        value = NeovimCodeEditor.s_Config.TermLaunchArgs ?? ""
+      };
+      container.Add(argsField);
+
+      // Environment field
+      var envField = new TextField
+      {
+        label = "Environment Variables",
+        tooltip = "Space-separated list: ENV_0=VALUE_0 ENV_1=VALUE_1",
+        value = NeovimCodeEditor.s_Config.TermLaunchEnv ?? ""
+      };
+      container.Add(envField);
+
+      // Placeholder reference
+      var placeholderHelp = new HelpBox(
+        "Placeholders:\n" +
+        "{app} - Neovim executable path\n" +
+        "{filePath} - Path to file being opened\n" +
+        "{serverSocket} - Socket for Neovim server communication\n" +
+        "{instanceId} - Unity process ID\n" +
+#if UNITY_EDITOR_WIN
+        "{getProcessPPIDScriptPath} - Path to GetProcessPPID.ps1 for window focusing\n" +
+#endif
+        "{environment} - Environment variables from the field above",
+        HelpBoxMessageType.Info
+      );
+      placeholderHelp.style.marginTop = 5;
+      container.Add(placeholderHelp);
+
+      // Status message
+      var statusLabel = new Label { style = { color = Color.green, marginTop = 5 } };
+      container.Add(statusLabel);
+
+      // Template dropdown callback
+      templateDropdown.RegisterValueChangedCallback(e =>
+      {
+        if (e.newValue == "Custom") return;
+        var template = NeovimCodeEditor.s_TermLaunchCmds.First(t => t.Item1 == e.newValue);
+        cmdField.value = template.Item1;
+        argsField.value = template.Item2;
+        envField.value = template.Item3;
+      });
+
+      // Update button
+      var updateBtn = new Button(() =>
+      {
+        if (!NeovimCodeEditor.TryChangeTermLaunchCmd((cmdField.value, argsField.value, envField.value)))
+        {
+          statusLabel.text = "[ERROR] Terminal not available. Check if command exists in PATH.";
+          statusLabel.style.color = Color.red;
+        }
+        else
+        {
+          statusLabel.text = "[INFO] Terminal launch command updated successfully.";
+          statusLabel.style.color = Color.green;
+        }
+      })
+      { text = "Update" };
+      updateBtn.style.marginTop = 5;
+      container.Add(updateBtn);
     }
 
     private void CreateFileOpeningTab(VisualElement container)
