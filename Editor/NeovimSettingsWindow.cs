@@ -10,6 +10,22 @@ namespace Neovim.Editor
   {
     private const string k_WindowTitle = "Neovim Settings";
 
+    // File Opening tab working copy
+    private List<ModifierBinding> m_Bindings;
+    private Label m_BindingInfoName;
+    private Label m_BindingInfoDesc;
+    private VisualElement m_BindingRows;
+    private static readonly List<string> s_TemplateNames;
+    private const string k_CustomLabel = "Custom";
+
+    static NeovimSettingsWindow()
+    {
+      s_TemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
+        .Select(t => t.Name)
+        .Append(k_CustomLabel)
+        .ToList();
+    }
+
     [MenuItem("Window/Neovim")]
     public static void ShowWindow()
     {
@@ -220,12 +236,285 @@ namespace Neovim.Editor
 
     private void CreateFileOpeningTab(VisualElement container)
     {
-      // Will be implemented in Task 5
+      container.style.padding = 10;
+
+      // Two-column layout: bindings left, templates right
+      var twoColumn = new VisualElement();
+      twoColumn.style.flexDirection = FlexDirection.Row;
+      twoColumn.style.flexGrow = 1;
+      container.Add(twoColumn);
+
+      // LEFT COLUMN: Modifier Bindings
+      var leftColumn = new VisualElement
+      {
+        style =
+        {
+          flexGrow = 1,
+          flexDirection = FlexDirection.Column,
+          paddingRight = 10,
+          borderRightWidth = 1,
+          borderRightColor = new Color(0.3f, 0.3f, 0.3f)
+        }
+      };
+      twoColumn.Add(leftColumn);
+
+      var bindingsTitle = new Label("Modifier Bindings")
+      {
+        style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 5 }
+      };
+      leftColumn.Add(bindingsTitle);
+
+      var bindingsHelp = new Label("Configure how Neovim opens files when clicked in Unity, based on modifier keys:")
+      {
+        style = { whiteSpace = WhiteSpace.Normal, fontSize = 11, marginBottom = 10 }
+      };
+      leftColumn.Add(bindingsHelp);
+
+      // ScrollView for binding rows
+      var scrollView = new ScrollView(ScrollViewMode.Vertical)
+      {
+        style = { flexGrow = 1 }
+      };
+      leftColumn.Add(scrollView);
+
+      m_BindingRows = new VisualElement
+      {
+        style = { flexDirection = FlexDirection.Column }
+      };
+      scrollView.Add(m_BindingRows);
+
+      // Initialize bindings from config
+      m_Bindings = NeovimCodeEditor.s_Config.ModifierBindings
+        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
+        .ToList();
+
+      RebuildBindingRows();
+
+      // Toolbar: Add button + Apply button
+      var toolbar = new VisualElement
+      {
+        style = { flexDirection = FlexDirection.Row, marginTop = 10, justifyContent = Justify.SpaceBetween }
+      };
+      leftColumn.Add(toolbar);
+
+      var addBtn = new Button(() =>
+      {
+        m_Bindings.Add(new ModifierBinding
+        {
+          Modifiers = (int)EventModifiers.Shift,
+          Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args
+        });
+        RebuildBindingRows();
+      })
+      { text = "+ Add Binding" };
+      toolbar.Add(addBtn);
+
+      var applyBtn = new Button(() =>
+      {
+        NeovimCodeEditor.s_Config.ModifierBindings = m_Bindings
+          .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
+          .ToList();
+        NeovimCodeEditor.s_Config.Save();
+      })
+      { text = "Apply" };
+      toolbar.Add(applyBtn);
+
+      // RIGHT COLUMN: Template info + Jump args
+      var rightColumn = new VisualElement
+      {
+        style = { width = 220, flexShrink = 0, paddingLeft = 10, flexDirection = FlexDirection.Column }
+      };
+      twoColumn.Add(rightColumn);
+
+      // Template Info section
+      var templateTitle = new Label("Template Info")
+      {
+        style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 5 }
+      };
+      rightColumn.Add(templateTitle);
+
+      m_BindingInfoName = new Label { style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 3, whiteSpace = WhiteSpace.Normal } };
+      rightColumn.Add(m_BindingInfoName);
+
+      m_BindingInfoDesc = new Label { style = { whiteSpace = WhiteSpace.Normal, flexWrap = Wrap.Wrap } };
+      rightColumn.Add(m_BindingInfoDesc);
+
+      SetInfoPanel(null);
+
+      rightColumn.Add(new VisualElement { style = { height = 15 } });
+
+      // Jump-to-Cursor section
+      var jumpTitle = new Label("Jump-to-Cursor Arguments")
+      {
+        style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 5 }
+      };
+      rightColumn.Add(jumpTitle);
+
+      var jumpField = new TextField
+      {
+        label = "Arguments",
+        tooltip = "Arguments when jumping to a specific line/column in Neovim.",
+        value = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs
+      };
+      rightColumn.Add(jumpField);
+
+      var jumpTemplates = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates.ToList();
+      var jumpDropdown = new DropdownField("Template", jumpTemplates, 0);
+      jumpDropdown.SetValueWithoutNotify("Select template...");
+      jumpDropdown.RegisterValueChangedCallback(e =>
+      {
+        jumpField.value = e.newValue;
+      });
+      rightColumn.Add(jumpDropdown);
+
+      var jumpHelp = new Label(
+        "{serverSocket} - Socket for Neovim communication\n{line} - Line number to jump to\n{column} - Column number")
+      {
+        style = { fontSize = 10, whiteSpace = WhiteSpace.Normal, marginTop = 5 }
+      };
+      rightColumn.Add(jumpHelp);
+
+      var jumpApplyBtn = new Button(() =>
+      {
+        NeovimCodeEditor.s_Config.JumpToCursorPositionArgs = jumpField.value;
+        NeovimCodeEditor.s_Config.Save();
+      })
+      { text = "Update" };
+      rightColumn.Add(jumpApplyBtn);
     }
 
     private void CreateMaintenanceTab(VisualElement container)
     {
       // Will be implemented in Task 6
+    }
+
+    private void RebuildBindingRows()
+    {
+      m_BindingRows.Clear();
+
+      for (int i = 0; i < m_Bindings.Count; i++)
+      {
+        int idx = i;
+        var binding = m_Bindings[i];
+        bool isDefault = binding.Modifiers == 0;
+
+        var row = new VisualElement
+        {
+          style =
+          {
+            flexDirection = FlexDirection.Column,
+            marginBottom = 8,
+            borderBottomWidth = 1,
+            borderBottomColor = new Color(0.25f, 0.25f, 0.25f),
+            paddingBottom = 5
+          }
+        };
+
+        // Header row
+        var header = new VisualElement
+        {
+          style = { flexDirection = FlexDirection.Row, alignItems = Align.Center }
+        };
+        row.Add(header);
+
+        if (isDefault)
+        {
+          header.Add(new Label("Default (no modifier)")
+          {
+            style = { unityFontStyleAndWeight = FontStyle.Bold, flexGrow = 1 }
+          });
+        }
+        else
+        {
+          header.Add(new Label("Modifiers:") { style = { marginRight = 5 } });
+
+          var shiftToggle = new Toggle("S") { value = (binding.Modifiers & (int)EventModifiers.Shift) != 0 };
+          var ctrlToggle = new Toggle("C") { value = (binding.Modifiers & (int)EventModifiers.Control) != 0 };
+          var altToggle = new Toggle("A") { value = (binding.Modifiers & (int)EventModifiers.Alt) != 0 };
+
+          System.Action updateMods = () =>
+          {
+            int mods = 0;
+            if (shiftToggle.value) mods |= (int)EventModifiers.Shift;
+            if (ctrlToggle.value) mods |= (int)EventModifiers.Control;
+            if (altToggle.value) mods |= (int)EventModifiers.Alt;
+            m_Bindings[idx].Modifiers = mods;
+          };
+
+          shiftToggle.RegisterValueChangedCallback(_ => updateMods());
+          ctrlToggle.RegisterValueChangedCallback(_ => updateMods());
+          altToggle.RegisterValueChangedCallback(_ => updateMods());
+
+          foreach (var t in new[] { shiftToggle, ctrlToggle, altToggle })
+          {
+            t.style.marginRight = 2;
+            header.Add(t);
+          }
+
+          var spacer = new VisualElement { style = { flexGrow = 1 } };
+          header.Add(spacer);
+
+          var deleteBtn = new Button(() =>
+          {
+            m_Bindings.RemoveAt(idx);
+            RebuildBindingRows();
+          })
+          { text = "×", style = { color = new Color(1f, 0.4f, 0.4f) } };
+          header.Add(deleteBtn);
+        }
+
+        // Template dropdown
+        string currentName = GetTemplateName(binding.Args);
+        var templateDd = new DropdownField(s_TemplateNames, s_TemplateNames.IndexOf(currentName));
+        row.Add(templateDd);
+
+        // Args field
+        var argsField = new TextField { value = binding.Args };
+        row.Add(argsField);
+
+        templateDd.RegisterValueChangedCallback(e =>
+        {
+          if (e.newValue == k_CustomLabel)
+          {
+            SetInfoPanel(null);
+            return;
+          }
+          var template = NeovimCodeEditor.s_OpenFileArgsTemplates.FirstOrDefault(t => t.Name == e.newValue);
+          if (template.Name == null) return;
+          argsField.SetValueWithoutNotify(template.Args);
+          m_Bindings[idx].Args = template.Args;
+          SetInfoPanel(template);
+        });
+
+        argsField.RegisterValueChangedCallback(e =>
+        {
+          m_Bindings[idx].Args = e.newValue;
+          if (GetTemplateName(e.newValue) == k_CustomLabel)
+            templateDd.SetValueWithoutNotify(k_CustomLabel);
+        });
+
+        m_BindingRows.Add(row);
+      }
+    }
+
+    private static string GetTemplateName(string args)
+    {
+      var match = NeovimCodeEditor.s_OpenFileArgsTemplates.FirstOrDefault(t => t.Args == args);
+      return match.Name ?? k_CustomLabel;
+    }
+
+    private void SetInfoPanel((string Args, string Name, string Desc)? template)
+    {
+      if (template == null)
+      {
+        m_BindingInfoName.text = "";
+        m_BindingInfoDesc.text = "Select a template to see its description.";
+      }
+      else
+      {
+        m_BindingInfoName.text = template.Value.Name;
+        m_BindingInfoDesc.text = template.Value.Desc;
+      }
     }
   }
 }
