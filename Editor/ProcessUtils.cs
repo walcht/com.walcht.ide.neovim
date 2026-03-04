@@ -49,7 +49,14 @@ namespace Neovim.Editor
       p.StartInfo.FileName = "where.exe";
 #endif
       p.StartInfo.Arguments = cmd;
-      p.RunWithAssertion(timeout);
+      try
+      {
+        p.RunWithAssertion(timeout);
+      }
+      catch (ExitCodeMismatchException e) when (e.Actual == 1)
+      {
+        return null;
+      }
       var path = p.StandardOutput.ReadLine();
       if (!File.Exists(path))
         return null;
@@ -100,14 +107,15 @@ namespace Neovim.Editor
       }
       if (p.ExitCode != expected)
       {
-        throw new ExitCodeMismatchException($"[neovim.ide] process `{p.StartInfo.FileName}` with args "
-            + $"`{p.StartInfo.Arguments}` didn't match in exit code, expected {expected}, got {p.ExitCode}");
+        throw new ExitCodeMismatchException($"`{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}`", expected, p.ExitCode);
       }
     }
   }
 
   public class ExitCodeMismatchException : Exception
   {
-    public ExitCodeMismatchException(string message) : base(message) { }
+    public readonly int Expected;
+    public readonly int Actual;
+    public ExitCodeMismatchException(string process, int expected, int actual) : base($"[neovim.ide] process {process} didn't match in exit code, expected {expected}, got {actual}") { }
   }
 }
