@@ -42,14 +42,21 @@ namespace Neovim.Editor
     public static string CmdPath(string cmd, int timeout)
     {
       using Process p = HeadlessProcess();
-#if UNITY_EDITOR_LINUX
-      p.StartInfo.FileName = "which";
-#else  // UNITY_EDITOR_WIN
+#if UNITY_EDITOR_WIN
       // the 'which' cmd equivalent in Windows is 'where.exe'
       p.StartInfo.FileName = "where.exe";
+#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      p.StartInfo.FileName = "which";
 #endif
       p.StartInfo.Arguments = cmd;
-      p.RunWithAssertion(timeout);
+      try
+      {
+        p.RunWithAssertion(timeout);
+      }
+      catch (ExitCodeMismatchException e) when (e.Actual == 1)
+      {
+        return null;
+      }
       var path = p.StandardOutput.ReadLine();
       if (!File.Exists(path))
         return null;
@@ -100,14 +107,19 @@ namespace Neovim.Editor
       }
       if (p.ExitCode != expected)
       {
-        throw new ExitCodeMismatchException($"[neovim.ide] process `{p.StartInfo.FileName}` with args "
-            + $"`{p.StartInfo.Arguments}` didn't match in exit code, expected {expected}, got {p.ExitCode}");
+        throw new ExitCodeMismatchException($"`{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}`", expected, p.ExitCode);
       }
     }
   }
 
   public class ExitCodeMismatchException : Exception
   {
-    public ExitCodeMismatchException(string message) : base(message) { }
+    public readonly int Expected;
+    public readonly int Actual;
+    public ExitCodeMismatchException(string process, int expected, int actual) : base($"[neovim.ide] process {process} didn't match in exit code, expected {expected}, got {actual}")
+    {
+      Expected = expected;
+      Actual = actual;
+    }
   }
 }

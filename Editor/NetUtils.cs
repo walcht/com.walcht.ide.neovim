@@ -42,6 +42,7 @@ namespace Neovim.Editor
       {
         TcpListener list = new(_ip, port);
         list.Start();
+        list.Stop();
       }
       catch (SocketException)
       {
