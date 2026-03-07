@@ -918,9 +918,11 @@ namespace Neovim.Editor
       packageInfo = m_AssemblyNameProvider.FindForAssetPath(path.NormalizeWindowsToUnix());
       if (packageInfo != null)
       {
-        // We have to normalize the path, because the PackageManagerRemapper assumes
-        // dir seperators will be os specific.
-        var absolutePath = Path.GetFullPath(path.NormalizePathSeparators());
+        // Use packageInfo.resolvedPath to get the real filesystem path (e.g. Library/PackageCache/com.unity.ugui@hash/).
+        // Path.GetFullPath() does not resolve Unity's virtual "Packages/<name>" paths on Linux — it just prepends CWD,
+        // returning the same virtual path as absolute. resolvedPath gives the actual on-disk location.
+        var suffix = SkipPathPrefix(path.NormalizeWindowsToUnix(), packageInfo.assetPath.NormalizeWindowsToUnix());
+        var absolutePath = Path.Combine(packageInfo.resolvedPath, suffix).NormalizePathSeparators();
         path = SkipPathPrefix(absolutePath, projectDir);
       }
 
