@@ -74,6 +74,17 @@ namespace Neovim.Editor
       fileOpeningTab.Add(fileOpeningContent);
       tabView.Add(fileOpeningTab);
 
+      // Tab 4: Unity Ping
+      var pingTab = new Tab("Unity Ping");
+      var pingContent = new VisualElement();
+      pingContent.style.paddingTop = 10;
+      pingContent.style.paddingBottom = 10;
+      pingContent.style.paddingLeft = 10;
+      pingContent.style.paddingRight = 10;
+      CreateUnityPingSection(pingContent);
+      pingTab.Add(pingContent);
+      tabView.Add(pingTab);
+
       rootVisualElement.Add(tabView);
     }
 
@@ -697,6 +708,76 @@ namespace Neovim.Editor
       container.Add(forceResetBtn);
 
       // NOTE: Regenerate Project Files removed - already exists in External Tools preferences
+    }
+
+    private void CreateUnityPingSection(VisualElement container)
+    {
+      var header = new Label("Asset Ping Server")
+      {
+        style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 8 }
+      };
+      container.Add(header);
+
+      var desc = new Label(
+        "Listens for ping/select requests from nvim and highlights assets in the Project window. "
+        + "Each Unity instance writes its port to Library/.unity-ping-port so nvim can find the right editor.");
+      desc.style.whiteSpace = WhiteSpace.Normal;
+      desc.style.fontSize = 10;
+      desc.style.marginBottom = 12;
+      container.Add(desc);
+
+      // Status row
+      var statusRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginBottom = 6 } };
+      var statusDot = new Label("●") { style = { fontSize = 16, marginRight = 6 } };
+      var statusText = new Label();
+      statusRow.Add(statusDot);
+      statusRow.Add(statusText);
+      container.Add(statusRow);
+
+      // Port row
+      var portRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginBottom = 12 } };
+      var portLabel = new Label("Port:") { style = { marginRight = 6 } };
+      var portValue = new Label();
+      portRow.Add(portLabel);
+      portRow.Add(portValue);
+      container.Add(portRow);
+
+      // Port file row
+      var fileRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginBottom = 16 } };
+      var fileLabel = new Label("Port file:") { style = { marginRight = 6 } };
+      var fileValue = new Label() { style = { fontSize = 10 } };
+      fileRow.Add(fileLabel);
+      fileRow.Add(fileValue);
+      container.Add(fileRow);
+
+      // Restart button
+      var restartBtn = new Button(() =>
+      {
+        NeovimAssetPingServer.Restart();
+        RefreshPingStatus(statusDot, statusText, portValue, fileValue);
+      })
+      { text = "Restart Server" };
+      restartBtn.style.width = 140;
+      container.Add(restartBtn);
+
+      // Initial refresh + auto-refresh every second while tab is visible
+      RefreshPingStatus(statusDot, statusText, portValue, fileValue);
+      container.schedule.Execute(() =>
+        RefreshPingStatus(statusDot, statusText, portValue, fileValue)
+      ).Every(1000);
+    }
+
+    private static void RefreshPingStatus(Label dot, Label statusText, Label portValue, Label fileValue)
+    {
+      bool running = NeovimAssetPingServer.IsRunning;
+      int port = NeovimAssetPingServer.CurrentPort;
+
+      dot.style.color = running ? new Color(0.2f, 0.8f, 0.2f) : new Color(0.8f, 0.2f, 0.2f);
+      statusText.text = running ? "Running" : "Stopped";
+      portValue.text = running ? port.ToString() : "—";
+      fileValue.text = running
+        ? System.IO.Path.GetFullPath(System.IO.Path.Combine(UnityEngine.Application.dataPath, "..", "Library", ".unity-ping-port"))
+        : "—";
     }
 
     private void AddSeparator(VisualElement container)

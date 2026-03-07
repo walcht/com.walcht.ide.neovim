@@ -12,29 +12,84 @@ namespace Neovim.Editor
   [InitializeOnLoad]
   public static class NeovimAssetPingServer
   {
-    private const int Port = 54321;
+    private const int DefaultPort = 54321;
+
+    // Written on start, deleted on stop — nvim reads this to find the right port
+    // when multiple Unity editors are running simultaneously.
+    private static readonly string s_PortFilePath = Path.GetFullPath(
+      Path.Combine(Application.dataPath, "..", "Library", ".unity-ping-port"));
 
     private static HttpListener s_Listener;
+    private static int s_CurrentPort = -1;
     private static string s_PendingPingPath = null;
     private static string s_PendingSelectPath = null;
     private static readonly object s_Lock = new();
 
+    public static bool IsRunning => s_Listener != null && s_Listener.IsListening;
+    public static int CurrentPort => s_CurrentPort;
+
     static NeovimAssetPingServer()
     {
-      s_Listener = new HttpListener();
-      s_Listener.Prefixes.Add($"http://localhost:{Port}/");
+      // AssetImportWorker and other batch-mode processes also run [InitializeOnLoad]
+      // but have no editor UI — skip them so they don't overwrite the port file.
+      if (Application.isBatchMode) return;
 
+      Start();
+      EditorApplication.quitting += Stop;
+      AssemblyReloadEvents.beforeAssemblyReload += Stop;
+    }
+
+    public static void Restart()
+    {
+      Stop();
+      Start();
+    }
+
+    private static void Start()
+    {
+      int port = BindListener();
+      if (port < 0) return;
+
+      s_CurrentPort = port;
       try
       {
-        s_Listener.Start();
-        BeginAccept();
-        EditorApplication.update += ProcessPendingPing;
-        EditorApplication.quitting += Stop;
-        AssemblyReloadEvents.beforeAssemblyReload += Stop;
+        File.WriteAllText(s_PortFilePath, port.ToString());
       }
       catch (Exception e)
       {
-        Debug.LogWarning($"[neovim.ide] asset ping server failed to start on port {Port}: {e.Message}");
+        Debug.LogWarning($"[neovim.ide] failed to write port file: {e.Message}");
+      }
+
+      BeginAccept();
+      EditorApplication.update += ProcessPendingPing;
+    }
+
+    // Try DefaultPort first; if taken, fall back to any available port.
+    // Returns the bound port, or -1 on failure.
+    private static int BindListener()
+    {
+      s_Listener = new HttpListener();
+      s_Listener.Prefixes.Add($"http://localhost:{DefaultPort}/");
+      try
+      {
+        s_Listener.Start();
+        return DefaultPort;
+      }
+      catch (Exception) { }
+
+      // DefaultPort busy — pick a free port and retry
+      int fallback = NetUtils.GetRandomAvailablePort();
+      s_Listener = new HttpListener();
+      s_Listener.Prefixes.Add($"http://localhost:{fallback}/");
+      try
+      {
+        s_Listener.Start();
+        return fallback;
+      }
+      catch (Exception e)
+      {
+        Debug.LogWarning($"[neovim.ide] asset ping server failed to start: {e.Message}");
+        return -1;
       }
     }
 
@@ -43,6 +98,8 @@ namespace Neovim.Editor
       EditorApplication.update -= ProcessPendingPing;
       try { s_Listener?.Stop(); } catch (Exception) { }
       try { s_Listener?.Close(); } catch (Exception) { }
+      try { File.Delete(s_PortFilePath); } catch (Exception) { }
+      s_CurrentPort = -1;
     }
 
     private static void BeginAccept()
