@@ -42,11 +42,11 @@ namespace Neovim.Editor
     public static string CmdPath(string cmd, int timeout)
     {
       using Process p = HeadlessProcess();
-#if UNITY_EDITOR_LINUX
-      p.StartInfo.FileName = "which";
-#else  // UNITY_EDITOR_WIN
+#if UNITY_EDITOR_WIN
       // the 'which' cmd equivalent in Windows is 'where.exe'
       p.StartInfo.FileName = "where.exe";
+#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      p.StartInfo.FileName = "which";
 #endif
       p.StartInfo.Arguments = cmd;
       try
@@ -116,6 +116,10 @@ namespace Neovim.Editor
   {
     public readonly int Expected;
     public readonly int Actual;
-    public ExitCodeMismatchException(string process, int expected, int actual) : base($"[neovim.ide] process {process} didn't match in exit code, expected {expected}, got {actual}") { }
+    public ExitCodeMismatchException(string process, int expected, int actual) : base($"[neovim.ide] process {process} didn't match in exit code, expected {expected}, got {actual}")
+    {
+      Expected = expected;
+      Actual = actual;
+    }
   }
 }
