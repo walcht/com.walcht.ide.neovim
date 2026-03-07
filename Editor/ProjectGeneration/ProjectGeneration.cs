@@ -76,8 +76,6 @@ namespace Neovim.Editor
       m_ProjectName = Path.GetFileName(ProjectDirectory);
       m_AssemblyNameProvider = assemblyNameProvider;
       m_GUIDGenerator = guidGenerator;
-
-      SetupProjectSupportedExtensions();
     }
 
     /// <summary>
