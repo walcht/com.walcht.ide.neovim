@@ -9,6 +9,18 @@ namespace Neovim.Editor
 {
   public class NeovimChangeOpenFileRequestArgs : EditorWindow
   {
+    private static readonly string k_CustomLabel = "Custom";
+    private Button m_AddBtn;
+    private Button m_ApplyBtn;
+    private List<ModifierBinding> m_Bindings;
+    private Label m_InfoName;
+    private Label m_InfoDesc;
+    private static readonly List<string> s_TemplateNames;
+    private bool m_Dirty = false;
+
+    // left-panel binding rows container
+    private VisualElement m_BindingRows;
+
     [MenuItem("Neovim/Change Open-File Request Args")]
     static void Init()
     {
@@ -18,18 +30,15 @@ namespace Neovim.Editor
       window.ShowModalUtility();
     }
 
-    // working copy of bindings — edited in-place, saved on "Update"
-    private List<ModifierBinding> m_Bindings;
-
-    // right-panel elements
-    private Label m_InfoName;
-    private Label m_InfoDesc;
-
-    // left-panel binding rows container
-    private VisualElement m_BindingRows;
-
-    private static readonly List<string> s_TemplateNames;
-    private static readonly string k_CustomLabel = "Custom";
+    private static readonly Dictionary<string, int> s_Modifiers = new Dictionary<string, int> {
+       ["SHIFT"] = (int)EventModifiers.Shift,
+       ["CTRL"] = (int)EventModifiers.Control,
+       ["ALT"] = (int)EventModifiers.Alt,
+       ["SHIFT+CTRL"] = (int)EventModifiers.Shift | (int)EventModifiers.Control,
+       ["SHIFT+ALT"] = (int)EventModifiers.Shift | (int)EventModifiers.Alt,
+       ["CTRL+ALT"] = (int)EventModifiers.Control | (int)EventModifiers.Alt,
+       ["SHIFT+CTRL+ALT"] = (int)EventModifiers.Shift | (int)EventModifiers.Control | (int)EventModifiers.Alt
+    };
 
     static NeovimChangeOpenFileRequestArgs()
     {
@@ -39,12 +48,46 @@ namespace Neovim.Editor
         .ToList();
     }
 
+    private bool IsModifierInUse(int modifier) {
+      for (int i = 0; i < m_Bindings.Count; ++i) {
+        if (m_Bindings[i].Modifiers == modifier) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    private int GetNextAvailableModifier(out string representation)
+    {
+      representation = null;
+      if (m_Bindings.Count == (s_Modifiers.Count + 1))
+        return -1;
+
+      foreach (var kv in s_Modifiers) {
+        if (!IsModifierInUse(kv.Value)) {
+          representation = kv.Key;
+          return kv.Value;
+        }
+      }
+
+      return -1;
+    }
+
+    // CreateGUI is called when the EditorWindow's rootVisualElement is ready to be populated.
     private void CreateGUI()
     {
       // deep-copy bindings so we don't mutate config until user clicks Update
       m_Bindings = NeovimCodeEditor.s_Config.ModifierBindings
-        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
+        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args, Representation = b.Representation })
         .ToList();
+
+      m_AddBtn = new Button();
+      m_AddBtn.text = "+ Add binding";
+      m_AddBtn.clicked += OnAddClick;
+
+      m_ApplyBtn = new Button();
+      m_ApplyBtn.text = "Apply";
+      m_ApplyBtn.clicked += OnApplyClick;
 
       // ── root: column (desc on top, panels below) ────────────────────────
       var root = rootVisualElement;
@@ -70,7 +113,7 @@ namespace Neovim.Editor
       leftPanel.style.flexGrow = 1;
       leftPanel.style.flexDirection = FlexDirection.Column;
       leftPanel.style.borderRightWidth = 1;
-      leftPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
+      leftPanel.style.borderRightColor = new Color(0.4f, 0.4f, 0.4f);
       leftPanel.style.paddingRight = 4;
 
       var leftTitle = new Label("Modifier Bindings");
@@ -94,30 +137,15 @@ namespace Neovim.Editor
       // bottom toolbar: [+] Add + [Update]
       var toolbar = new VisualElement();
       toolbar.style.flexDirection = FlexDirection.Row;
+      toolbar.style.flexShrink = 0;
       toolbar.style.justifyContent = Justify.SpaceBetween;
       toolbar.style.marginTop = 6;
       toolbar.style.marginBottom = 4;
       toolbar.style.marginLeft = 4;
       toolbar.style.marginRight = 4;
 
-      var addBtn = new Button(() =>
-      {
-        m_Bindings.Add(new ModifierBinding { Modifiers = (int)EventModifiers.Shift, Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args });
-        RebuildBindingRows();
-      })
-      { text = "+ Add binding" };
-
-      var updateBtn = new Button(() =>
-      {
-        NeovimCodeEditor.s_Config.ModifierBindings = m_Bindings
-          .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
-          .ToList();
-        NeovimCodeEditor.s_Config.Save();
-      })
-      { text = "Apply" };
-
-      toolbar.Add(addBtn);
-      toolbar.Add(updateBtn);
+      toolbar.Add(m_AddBtn);
+      toolbar.Add(m_ApplyBtn);
       leftPanel.Add(toolbar);
 
       // ── RIGHT panel ──────────────────────────────────────────────────────
@@ -150,7 +178,7 @@ namespace Neovim.Editor
       // ── separator ────────────────────────────────────────────────────────
       var separator = new VisualElement();
       separator.style.borderTopWidth = 1;
-      separator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
+      separator.style.borderTopColor = new Color(0.4f, 0.4f, 0.4f);
       separator.style.marginTop = 8;
       separator.style.marginBottom = 6;
       rightPanel.Add(separator);
@@ -162,14 +190,22 @@ namespace Neovim.Editor
       rightPanel.Add(placeholderTitle);
 
       var placeholderInfo = new Label(
-        "{filePath} — path to the file being opened.\n\n"
-        + "{serverSocket} — socket used to communicate with the Neovim server (Unix domain socket on Linux, TCP address on Windows).");
+        "<b>{filePath}</b> — path to the file being opened.\n\n"
+        + "<b>{serverSocket}</b> — socket used to communicate with the Neovim server (Unix domain socket on Linux, TCP address on Windows).");
       placeholderInfo.style.whiteSpace = WhiteSpace.Normal;
       placeholderInfo.style.flexWrap = Wrap.Wrap;
       rightPanel.Add(placeholderInfo);
 
       panelsRow.Add(leftPanel);
       panelsRow.Add(rightPanel);
+
+      SetDirty(false);
+    }
+
+    private void SetDirty(bool val)
+    {
+      m_Dirty = val;
+      m_ApplyBtn.SetEnabled(val);
     }
 
     private void RebuildBindingRows()
@@ -187,7 +223,7 @@ namespace Neovim.Editor
         row.style.marginBottom = 6;
         row.style.marginLeft = 4;
         row.style.borderBottomWidth = 1;
-        row.style.borderBottomColor = new Color(0.25f, 0.25f, 0.25f);
+        row.style.borderBottomColor = new Color(0.4f, 0.4f, 0.4f);
         row.style.paddingBottom = 4;
 
         // ── row header: modifier toggles (skip for default) + delete button ──
@@ -206,38 +242,23 @@ namespace Neovim.Editor
         {
           var modLabel = new Label("Modifiers:");
           modLabel.style.marginRight = 4;
-          headerRow.Add(modLabel);
 
-          var shiftToggle = new Toggle("Shift") { value = (binding.Modifiers & (int)EventModifiers.Shift) != 0 };
-          var ctrlToggle = new Toggle("Ctrl") { value = (binding.Modifiers & (int)EventModifiers.Control) != 0 };
-          var altToggle = new Toggle("Alt") { value = (binding.Modifiers & (int)EventModifiers.Alt) != 0 };
+          var _modifiers = s_Modifiers.Keys.ToList();
+          var modifierDd = new DropdownField(_modifiers, _modifiers.IndexOf(binding.Representation));
+          modifierDd.RegisterValueChangedCallback(e => {
+            // check if current modifier is in use
+            int modifier = s_Modifiers[e.newValue];
+            if (IsModifierInUse(modifier)) {
+              modifierDd.SetValueWithoutNotify(e.previousValue);
+              return;
+            }
+            m_Bindings[idx].Modifiers = modifier;
+            m_Bindings[idx].Representation = e.newValue;
+            SetDirty(true);
+          });
 
-          foreach (var toggle in new[] { shiftToggle, ctrlToggle, altToggle })
-          {
-            toggle.style.marginRight = 2;
-          }
-
-          System.Action updateMods = () =>
-          {
-            int mods = 0;
-            if (shiftToggle.value) mods |= (int)EventModifiers.Shift;
-            if (ctrlToggle.value) mods |= (int)EventModifiers.Control;
-            if (altToggle.value) mods |= (int)EventModifiers.Alt;
-            m_Bindings[idx].Modifiers = mods;
-          };
-
-          shiftToggle.RegisterValueChangedCallback(_ => updateMods());
-          ctrlToggle.RegisterValueChangedCallback(_ => updateMods());
-          altToggle.RegisterValueChangedCallback(_ => updateMods());
-
-          headerRow.Add(shiftToggle);
-          headerRow.Add(ctrlToggle);
-          headerRow.Add(altToggle);
-
-          // spacer
-          var spacer = new VisualElement();
-          spacer.style.flexGrow = 1;
-          headerRow.Add(spacer);
+          var spacing = new VisualElement();
+          spacing.style.flexGrow = 1;
 
           var deleteBtn = new Button(() =>
           {
@@ -246,6 +267,10 @@ namespace Neovim.Editor
           })
           { text = "×" };
           deleteBtn.style.color = new Color(1f, 0.4f, 0.4f);
+
+          headerRow.Add(modLabel);
+          headerRow.Add(modifierDd);
+          headerRow.Add(spacing);
           headerRow.Add(deleteBtn);
         }
 
@@ -260,8 +285,16 @@ namespace Neovim.Editor
         var argsField = new TextField { value = binding.Args };
         argsField.style.marginTop = 2;
 
+        // update the info pannel on selection
+        templateDd.RegisterCallback<FocusEvent>(_ => {
+          var template = NeovimCodeEditor.s_OpenFileArgsTemplates
+                      .FirstOrDefault(t => t.Name == templateDd.value);
+          if (template.Name == null) return;
+          SetInfoPanel(template);
+        });
         templateDd.RegisterValueChangedCallback(e =>
         {
+          SetDirty(true);
           if (e.newValue == k_CustomLabel)
           {
             SetInfoPanel(null);
@@ -281,12 +314,44 @@ namespace Neovim.Editor
           // if user edited manually, update dropdown to Custom
           if (GetTemplateName(e.newValue) == k_CustomLabel)
             templateDd.SetValueWithoutNotify(k_CustomLabel);
+          SetDirty(true);
         });
 
         row.Add(templateDd);
         row.Add(argsField);
         m_BindingRows.Add(row);
+      } // END FOR
+
+      // this means all modifier combinations are used
+      SetDirty(m_Bindings.Count < (s_Modifiers.Count + 1));
+
+    }
+
+    private void OnAddClick()
+    {
+      // check if button is already disabled
+      if (!m_AddBtn.enabledSelf)
+        return;
+      int nextAvailableModifier = GetNextAvailableModifier(out string representation);
+      if (nextAvailableModifier == -1) {
+        return;
       }
+      m_Bindings.Add(new ModifierBinding {
+          Modifiers = nextAvailableModifier,
+          Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args,
+          Representation = representation });
+      SetDirty(true);
+      RebuildBindingRows();
+    }
+
+    private void OnApplyClick()
+    {
+      if (!m_ApplyBtn.enabledSelf) return;
+      NeovimCodeEditor.s_Config.ModifierBindings = m_Bindings
+        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args, Representation = b.Representation })
+        .ToList();
+      NeovimCodeEditor.s_Config.Save();
+      SetDirty(false);
     }
 
     private static string GetTemplateName(string args)

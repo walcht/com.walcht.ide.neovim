@@ -40,8 +40,6 @@ namespace Neovim.Editor
       };
       msgField.style.flexGrow = 2;
 
-      UIUtils.SafeSetScrollerVisibility(msgField, ScrollerVisibility.AlwaysVisible);
-
       // add explanation for placeholders
       msgField.value =
         "Process timeout is the maximum time in milliseconds to wait for the\n"

@@ -11,7 +11,22 @@ namespace Neovim.Editor
   [Serializable]
   public class ModifierBinding
   {
-    public int Modifiers;   // EventModifiers cast to int (0 = no modifier = default)
+    /// <summary>
+    /// EventModifiers cast to int (0 = no modifier = default).
+    /// </summary>
+    public int Modifiers;
+
+
+    /// <summary>
+    /// String representation of this binding (e.g., "SHIFT+CTRL"). This is mainly used so that it is easier to read
+    /// this from a raw JSON file.
+    /// </summary>
+    public string Representation;
+
+
+    /// <summary>
+    /// Arguments associated with this binding that will be supplied to nvim remote command.
+    /// </summary>
     public string Args;
   }
 
@@ -73,6 +88,9 @@ namespace Neovim.Editor
     }
 
     private string m_OpenFileArgs;
+    /// <summary>
+    /// Current open-file arguments that will be supplied to nvim remote cmd upon opening a file from Unity.
+    /// </summary>
     public string OpenFileArgs
     {
       get => m_OpenFileArgs;

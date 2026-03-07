@@ -58,8 +58,10 @@ namespace Neovim.Editor
     ///   to send request to the Neovim server instance to jump to a given cursor position.
     ///   First entry is the default.
     /// </summary>
-    public static readonly string[] s_JumpToCursorPositionArgsTemplates = {
-      "--server {serverSocket} --remote-send \":call cursor({line},{column})<CR>\"",
+    public static readonly (string Args, string Name, string Desc)[] s_JumpToCursorPositionArgsTemplates = {
+      ("--server {serverSocket} --remote-send \":call cursor({line},{column})<CR>\"",
+       "Jump to position via cursor call",
+       "Jumps to requested position in the current buffer using nvim lua cursor call."),
     };
 
     // add your file extension here if you want it to be opened by Neovim via Unity
@@ -175,7 +177,6 @@ namespace Neovim.Editor
         }
       }
 
-      // migrate legacy single OpenFileArgs → ModifierBindings
       if (!s_Config.ModifierBindings.Any() && !string.IsNullOrWhiteSpace(s_Config.OpenFileArgs))
       {
         s_Config.ModifierBindings.Add(new ModifierBinding { Modifiers = 0, Args = s_Config.OpenFileArgs });
@@ -200,7 +201,7 @@ namespace Neovim.Editor
         {
           Debug.LogError($"[neovim.ide] the jump-to-cursor-position arguments templates array is empty");
         }
-        s_Config.JumpToCursorPositionArgs = s_JumpToCursorPositionArgsTemplates[0];
+        s_Config.JumpToCursorPositionArgs = s_JumpToCursorPositionArgsTemplates[0].Args;
         s_Config.Save();
       }
 
