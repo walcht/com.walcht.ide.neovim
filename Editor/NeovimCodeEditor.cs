@@ -93,7 +93,7 @@ namespace Neovim.Editor
       UNKNOWN,  // can't be determined :/
     }
     private static readonly LinuxDesktopEnvironment s_LinuxPlatform;
-#else  // UNITY_EDITOR_WIN
+#elif UNITY_EDITOR_WIN
     [DllImport("user32.dll")]
     internal static extern IntPtr SetForegroundWindow(IntPtr hWnd);
 
@@ -116,6 +116,16 @@ namespace Neovim.Editor
       ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket}", "{environment}"),
       ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
     };
+#elif UNITY_EDITOR_OSX
+    {
+      ("/Applications/kitty.app/Contents/MacOS/kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("/Applications/Alacritty.app/Contents/MacOS/alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("/Applications/ghostty.app/Contents/MacOS/ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
+      ("/Applications/iTerm.app/Contents/MacOS/iTerm2", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
+      ("kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket}", "{environment}"),
+    };
 #else  // UNITY_EDITOR_WIN
     {
       // on Powershell, replace the ';' with "`;"
@@ -133,6 +143,13 @@ namespace Neovim.Editor
        "/usr/bin/nvim",
        "/opt/nvim-linux64/bin/nvim",
        "/opt/nvim-linux-x86_64/bin/nvim",
+     };
+#elif UNITY_EDITOR_OSX
+     {
+       "nvim",
+       "/usr/local/bin/nvim",
+       "/opt/homebrew/bin/nvim",
+       "/usr/bin/nvim",
      };
 #else // UNITY_EDITOR_WIN
      // make sure to include the extension in the executalbe's name!
@@ -317,7 +334,7 @@ namespace Neovim.Editor
           s_WindowFocusingAvailable = true;
         }
       }
-#else  // UNITY_EDITOR_WIN
+#elif UNITY_EDITOR_WIN
       s_WindowFocusingAvailable = true;
 #endif
 
@@ -432,7 +449,12 @@ namespace Neovim.Editor
       }
       else  // or through terminal
       {
-        if (ProcessUtils.CmdPath(cmd, s_Config.ProcessTimeout) == null)
+        if (Path.IsPathRooted(cmd))
+        {
+          if (!File.Exists(cmd))
+            return false;
+        }
+        else if (ProcessUtils.CmdPath(cmd, s_Config.ProcessTimeout) == null)
           return false;
       }
 
@@ -776,10 +798,10 @@ namespace Neovim.Editor
             .ToLower()))
         return false;
 
-#if UNITY_EDITOR_LINUX
-      string app = CodeEditor.CurrentEditorPath;
-#else // UNITY_EDITOR_WIN
+#if UNITY_EDITOR_WIN
       string app = $"\"{CodeEditor.CurrentEditorPath}\"";
+#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      string app = CodeEditor.CurrentEditorPath;
 #endif
 
       // get terminal launch cmd and its args from Unity editor preferences
@@ -920,9 +942,17 @@ namespace Neovim.Editor
           p.RunWithAssertion(s_Config.ProcessTimeout);
         }
         catch (TimeoutException) { }
-#else  // UNITY_EDITOR_LINUX
+#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
         // life is ez on Linux (unless you deal with any window manager...)
-        p.RunWithAssertion(s_Config.ProcessTimeout);
+        try
+        {
+          p.RunWithAssertion(s_Config.ProcessTimeout);
+        }
+        catch (ExitCodeMismatchException e)
+        {
+          Debug.LogWarning($"[neovim.ide] failed to open file in Neovim server. Exit code: {e.Actual}. Is the server running?");
+        }
+        catch (TimeoutException) { }
 #endif
       }
 
@@ -947,8 +977,13 @@ namespace Neovim.Editor
           p.RunWithAssertion(s_Config.ProcessTimeout);
         }
         catch (TimeoutException) { }
-#else  // UNITY_EDITOR_LINUX
-        p.RunWithAssertion(s_Config.ProcessTimeout);
+#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+        try
+        {
+          p.RunWithAssertion(s_Config.ProcessTimeout);
+        }
+        catch (ExitCodeMismatchException) { }
+        catch (TimeoutException) { }
 #endif
       }
 
@@ -1014,7 +1049,7 @@ namespace Neovim.Editor
           // do nothing - too complicated to make it work on all desktop environments :/
           break;
       }
-#else  // UNITY_EDITOR_WIN
+#elif UNITY_EDITOR_WIN
       IntPtr windowHandle = new(Convert.ToInt64(s_Config.PrevServerProcessIntPtrStringRepr));
       ShowWindow(windowHandle, 5);  // 5 == Activates the window and displays it in its current size and position
       SetForegroundWindow(windowHandle);
