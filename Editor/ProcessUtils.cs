@@ -1,166 +1,113 @@
 #pragma warning disable IDE0130
 using System;
+using System.IO;
 using System.Diagnostics;
-using System.Collections.Generic;
 
 namespace Neovim.Editor
 {
   public static class ProcessUtils
   {
 #if UNITY_EDITOR_WIN
+    /// <summary>
+    /// Tries to get the window handle from the windowed process (only on Windows platforms).
+    /// </summary>
+    /// <param name="p">windowed process from which the window handle is fetched.</param>
+    /// <param name="processStartupTimeout">timeout that will be passed to WaitForInputIdle() for the process to finish
+    /// starting.</param>
+    /// <returns>window handle (guaranteed not to be IntPtr.Zero).</returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="TimeoutException">process timed out</exception>
     public static IntPtr GetWindowHandle(Process p, int processStartupTimeout)
     {
       // make sure to wait until the process finishes starting (remember that Start())
       // does NOT block until the process has actually started)
       if (!p.WaitForInputIdle(processStartupTimeout))
-        throw new InvalidOperationException();
-
+        throw new TimeoutException();
       // refresh/update the process' properties (we only care about the window handle)
       p.Refresh();
       IntPtr wh = p.MainWindowHandle;
       if (wh == IntPtr.Zero)
         throw new InvalidOperationException();
-
       return wh;
-
     }
 #endif
 
+    /// <summary>
+    /// Runs `which` cmd on Linux or `where.exe` on Windows and attemps to extract the full path.
+    /// </summary>
+    /// <param name="cmd"></param>
+    /// <returns>either the full path of the cmd, or null if not found.</returns>
+    /// <exception cref="ExitCodeMismatchException">non-zero exit code returned.</exception>
+    /// <exception cref="TimeoutException">process timed out</exception>
+    public static string CmdPath(string cmd, int timeout)
+    {
+      using Process p = HeadlessProcess();
+#if UNITY_EDITOR_LINUX
+      p.StartInfo.FileName = "which";
+#else  // UNITY_EDITOR_WIN
+      // the 'which' cmd equivalent in Windows is 'where.exe'
+      p.StartInfo.FileName = "where.exe";
+#endif
+      p.StartInfo.Arguments = cmd;
+      p.RunWithAssertion(timeout);
+      var path = p.StandardOutput.ReadLine();
+      if (!File.Exists(path))
+        return null;
+      return path;
+    }
 
     /// <summary>
-    ///   This is expected to be mainly used to spawn processes that are expected to exit
-    ///   almost immediately (e.g., think of spawning a process to send a Neovim request).
-    ///   This is also used to avoid cross-platform issues where, for instance, on Windows
-    ///   a call to WaitForExit(timeout) may not behave in an expected way.
+    /// Creates a headless (windowless) process with redirected stdout, stderr, and stdin.
     /// </summary>
-    public static void RunProcessAndKillAfter(string app, string args, int timeout = 500)
+    /// <returns>The created headless process.</returns>
+    public static Process HeadlessProcess()
     {
-      using Process p = new();
-      p.StartInfo.FileName = app;
-      p.StartInfo.Arguments = args;
+      var p = new Process();
       p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
       p.StartInfo.CreateNoWindow = true;
       p.StartInfo.UseShellExecute = false;
+      p.StartInfo.RedirectStandardOutput = true;
+      p.StartInfo.RedirectStandardError = true;
+      p.StartInfo.RedirectStandardInput = true;
+      return p;
+    }
 
+    /// <summary>
+    /// Runs the provided process and insures that the spawned process is killed even if it fails to exit within the
+    /// provided <paramref name="timeout"/>.
+    /// </summary>
+    /// <param name="Process"></param>
+    /// <param name="timeout">timeout to wait for the process in milliseconds. If failed, the process is killed and
+    /// TimeoutException is thrown.</param>
+    /// <param name="expected">expected exit code. Defaults to 0.</param>
+    /// <exception cref="ExitCodeMismatchException">non-zero exit code returned.</exception>
+    /// <exception cref="TimeoutException">process timed out</exception>
+    public static void RunWithAssertion(this Process p, int timeout, int expected = 0)
+    {
       p.Start();
-
       if (!p.WaitForExit(timeout))
       {
-        p.Kill();
-      }
-    }
-
-
-    public static bool RunShellCmd(string cmd, int timeout = 200)
-    {
-      bool success = false;
-      try
-      {
-        using Process p = new();
-#if UNITY_EDITOR_LINUX
-          string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
-          p.StartInfo.FileName = Environment.GetEnvironmentVariable("SHELL");
-          p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
-#else // UNITY_EDITOR_WIN
-        p.StartInfo.FileName = "cmd.exe";
-        p.StartInfo.Arguments = $"/C \"{cmd}\"";
-#endif
-        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-        p.StartInfo.CreateNoWindow = true;
-        p.StartInfo.UseShellExecute = false;
-
-        p.Start();
-
-        if (p.WaitForExit(timeout))
-        {
-          success = p.ExitCode == 0;
-        }
-        else
+        try
         {
           p.Kill();
         }
+        catch (Exception e)
+        {
+          UnityEngine.Debug.LogError($"[neovim.ide] failed to kill process before timeout assertion error. Raison: {e.Message}");
+        }
+        throw new TimeoutException($"[neovim.ide] process `{p.StartInfo.FileName}` with args "
+            + $"`{p.StartInfo.Arguments}` timed out after {timeout} milliseconds");
       }
-      catch (Exception) { }
-      return success;
-    }
-
-    /// runs `which` cmd on Linux or `where.exe` on Windows.
-    public static bool CheckCmdExistence(string cmd, int timeout = 200)
-    {
-      bool success = false;
-      try
+      if (p.ExitCode != expected)
       {
-        using Process p = new();
-#if UNITY_EDITOR_LINUX
-          p.StartInfo.FileName = "which";
-#else  // UNITY_EDITOR_WIN
-        // the 'which' cmd equivalent in Windows is 'where.exe'
-        p.StartInfo.FileName = "where.exe";
-#endif
-        p.StartInfo.Arguments = cmd;
-        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-        p.StartInfo.CreateNoWindow = true;
-        p.StartInfo.UseShellExecute = false;
-        p.Start();
-        if (p.WaitForExit(timeout))
-        {
-          // which/where.exe returns 0 if the supplied cmd was found
-          success = p.ExitCode == 0;
-        }
-        else
-        {
-          p.Kill();
-        }
+        throw new ExitCodeMismatchException($"[neovim.ide] process `{p.StartInfo.FileName}` with args "
+            + $"`{p.StartInfo.Arguments}` didn't match in exit code, expected {expected}, got {p.ExitCode}");
       }
-      catch (Exception) { }
-      return success;
     }
+  }
 
-
-    /// runs cmd and gets its standard output
-    public static bool GetCmdStdOutput(string cmd, out List<string> lines, int max_nbr_lines = 1, int timeout = 500)
-    {
-      bool success = false;
-      lines = new(max_nbr_lines);
-      int lines_read = 0;
-      try
-      {
-        using Process p = new();
-#if UNITY_EDITOR_LINUX
-        string escapedArgs = escapedArgs = cmd.Replace("\"", "\\\"");
-        p.StartInfo.FileName = Environment.GetEnvironmentVariable("SHELL");
-        p.StartInfo.Arguments = $"-c \"{escapedArgs}\"";
-#else // UNITY_EDITOR_WIN
-        p.StartInfo.FileName = "cmd.exe";
-        p.StartInfo.Arguments = $"/C {cmd}";
-#endif
-        p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-        p.StartInfo.CreateNoWindow = true;
-        p.StartInfo.UseShellExecute = false;
-        p.StartInfo.RedirectStandardOutput = true;
-
-        p.Start();
-
-
-        if (p.WaitForExit(timeout))
-        {
-          string line = null;
-          while (lines_read < max_nbr_lines &&
-              ((line = p.StandardOutput.ReadLine()) != null) &&
-              !string.IsNullOrWhiteSpace(line))
-          {
-            lines.Add(line);
-            ++lines_read;
-          }
-          success = p.ExitCode == 0;
-        }
-        else
-        {
-          p.Kill();
-        }
-      }
-      catch (Exception) { }
-      return success;
-    }
+  public class ExitCodeMismatchException : Exception
+  {
+    public ExitCodeMismatchException(string message) : base(message) { }
   }
 }
