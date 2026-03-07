@@ -28,7 +28,8 @@ namespace Neovim.Editor
   {
     private readonly Dictionary<string, UnityEditor.PackageManager.PackageInfo> m_PackageInfoCache = new();
 
-    ProjectGenerationFlag m_ProjectGenerationFlag = (ProjectGenerationFlag)EditorPrefs.GetInt(
+    ProjectGenerationFlag? m_ProjectGenerationFlag;
+    static ProjectGenerationFlag DefaultProjectGenerationFlag => (ProjectGenerationFlag)EditorPrefs.GetInt(
         "unity_project_generation_flag",
         (int)(ProjectGenerationFlag.Local | ProjectGenerationFlag.Embedded));
 
@@ -44,7 +45,7 @@ namespace Neovim.Editor
 
     internal virtual ProjectGenerationFlag ProjectGenerationFlagImpl
     {
-      get => m_ProjectGenerationFlag;
+      get => m_ProjectGenerationFlag ??= DefaultProjectGenerationFlag;
       private set
       {
         EditorPrefs.SetInt("unity_project_generation_flag", (int)value);

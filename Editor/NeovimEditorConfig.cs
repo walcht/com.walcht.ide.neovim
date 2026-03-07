@@ -9,6 +9,13 @@ using Newtonsoft.Json;
 namespace Neovim.Editor
 {
   [Serializable]
+  public class ModifierBinding
+  {
+    public int Modifiers;   // EventModifiers cast to int (0 = no modifier = default)
+    public string Args;
+  }
+
+  [Serializable]
   public class NeovimEditorConfig
   {
     private bool m_Dirty = false;
@@ -78,6 +85,17 @@ namespace Neovim.Editor
       }
     }
 
+    private List<ModifierBinding> m_ModifierBindings = new();
+    public List<ModifierBinding> ModifierBindings
+    {
+      get => m_ModifierBindings;
+      set
+      {
+        m_ModifierBindings = value;
+        m_Dirty = true;
+      }
+    }
+
     private string m_JumpToCursorPositionArgs;
     public string JumpToCursorPositionArgs
     {
@@ -118,6 +136,19 @@ namespace Neovim.Editor
       }
     }
 #endif
+
+    private bool m_KillNvimOnQuit = false;
+    public bool KillNvimOnQuit
+    {
+      get => m_KillNvimOnQuit;
+      set
+      {
+        if (value == m_KillNvimOnQuit)
+          return;
+        m_KillNvimOnQuit = value;
+        m_Dirty = true;
+      }
+    }
 
     private List<string> m_Analyzers = new();
     public List<string> Analyzers
