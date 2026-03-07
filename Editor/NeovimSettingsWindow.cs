@@ -18,15 +18,7 @@ namespace Neovim.Editor
     private Label m_InfoName;
     private Label m_InfoDesc;
 
-    private static readonly List<string> s_TemplateNames;
-
-    static NeovimSettingsWindow()
-    {
-      s_TemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
-        .Select(t => t.Name)
-        .Append(k_CustomLabel)
-        .ToList();
-    }
+    private List<string> m_TemplateNames;
 
     [MenuItem("Window/Neovim")]
     public static void ShowWindow()
@@ -38,6 +30,10 @@ namespace Neovim.Editor
 
     public void CreateGUI()
     {
+      m_TemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
+        .Select(t => t.Name)
+        .Append(k_CustomLabel)
+        .ToList();
       // Create TabView with persistent state
       var tabView = new TabView();
       tabView.viewDataKey = "neovim-settings-tabview";
@@ -589,7 +585,7 @@ namespace Neovim.Editor
 
         // Template dropdown
         string currentTemplateName = GetTemplateName(binding.Args);
-        var templateDd = new DropdownField("Template", s_TemplateNames, s_TemplateNames.IndexOf(currentTemplateName));
+        var templateDd = new DropdownField("Template", m_TemplateNames, m_TemplateNames.IndexOf(currentTemplateName));
         templateDd.style.marginTop = 4;
 
         // Args text field
