@@ -257,6 +257,9 @@ just newer versions of Unity.
 > versions. You are encouraged to give me access rights to your PR fork so
 > that I can add the potential fixes/changes for other platforms.
 
+PRs are squashed before being merged so do not pay a lof of attention to commit
+messages and commit structure.
+
 ## License
 
 MIT License. Read `license.txt` file.
