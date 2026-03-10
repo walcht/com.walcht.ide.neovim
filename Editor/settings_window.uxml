@@ -1,41 +1,91 @@
 <ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
-    <ui:VisualElement name="root" enabled="true" style="flex-grow: 1; flex-direction: row; width: auto; height: auto; align-items: stretch; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-shrink: 1;">
-        <ui:VisualElement name="left-panel" style="flex-grow: 1; padding-left: 5px; padding-right: 5px; padding-top: 5px; padding-bottom: 5px; justify-content: flex-start; height: auto; align-items: stretch;">
+    <ui:VisualElement name="root" enabled="true" style="flex-grow: 1; flex-direction: row; width: 100%; height: 100%; align-items: stretch; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-shrink: 1;">
+        <ui:VisualElement name="left-panel" style="flex-grow: 1; padding-left: 5px; padding-right: 5px; padding-top: 5px; padding-bottom: 5px; justify-content: flex-start; height: 100%; align-items: stretch; width: 70%;">
             <ui:Label text="Neovim Settings" name="neovim-settings" style="-unity-font-style: bold; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0;"/>
-            <ui:ScrollView name="main-area" enabled="true" usage-hints="LargePixelCoverage" mode="Vertical" style="flex-grow: 1; height: auto; opacity: 1; display: flex; flex-shrink: 0;">
+            <ui:ScrollView name="main-area" enabled="true" usage-hints="LargePixelCoverage" mode="Vertical" style="flex-grow: 1; height: auto; opacity: 1; display: flex; flex-shrink: 1;">
+                <ui:VisualElement name="project-generation-settings" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); padding-bottom: 5px; margin-bottom: 5px; padding-left: 5px; border-top-width: 1px; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; padding-top: 5px; padding-right: 5px;">
+                    <ui:Label text="Generate .csproj files for:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
+                    <ui:VisualElement style="flex-grow: 1; flex-direction: column; flex-wrap: wrap; align-items: stretch; justify-content: flex-start; align-self: auto; align-content: flex-start;">
+                        <ui:VisualElement name="embedded-packages" style="flex-grow: 1; flex-direction: row;">
+                            <ui:Label text="embedded packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                            <ui:Toggle label="" name="embedded-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="local-packages" style="flex-grow: 1; flex-direction: row;">
+                            <ui:Label text="local packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                            <ui:Toggle label="" name="local-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="registry-packages" style="flex-grow: 1; flex-direction: row;">
+                            <ui:Label text="registry packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                            <ui:Toggle label="" name="registry-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="git-packages" style="flex-grow: 1; flex-direction: row;">
+                            <ui:Label text="git packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                            <ui:Toggle label="" name="git-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="built-in-packages" style="flex-grow: 1; flex-direction: row;">
+                            <ui:Label text="built-in packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                            <ui:Toggle label="" name="built-in-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="local-tarball-packages" style="flex-grow: 1; flex-direction: row;">
+                            <ui:Label text="local tarball packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                            <ui:Toggle label="" name="local-tarball-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="unknown-source-packages" style="flex-grow: 1; flex-direction: row;">
+                            <ui:Label text="unknown-source packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                            <ui:Toggle label="" name="unknown-source-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="player-projects" style="flex-grow: 1; flex-direction: row;">
+                            <ui:Label text="player projects" tooltip="For each player project generate an additional csproj with the name &#39;project-player.csproj&#39;" style="flex-grow: 1; flex-shrink: 1;"/>
+                            <ui:Toggle label="" name="player-projects-tg"/>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
                 <ui:VisualElement name="nvim-executable-path" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); padding-bottom: 5px; margin-bottom: 5px; padding-left: 5px; border-top-width: 1px; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; padding-top: 5px; padding-right: 5px;">
-                    <ui:Label text="Change Neovim executable path:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 5px; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
+                    <ui:Label text="Change Neovim executable path:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
                     <ui:TextField label="nvim path:" placeholder-text="path/to/nvim.exe" name="nvim-exec-path-tf" tooltip="Currently set nvim absolute executable path. Change this if, for some reason, you encounter issues with Neovim discovery (in External Editor Settings)."/>
                 </ui:VisualElement>
                 <ui:VisualElement name="terminal-launch-cmd-args" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-bottom-color: rgb(77, 77, 77); padding-left: 5px; padding-bottom: 5px; border-top-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; padding-top: 5px; padding-right: 5px; margin-bottom: 5px;">
-                    <ui:Label text="Configure terminal launch command to create the initial Neovim server instance:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 5px; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
+                    <ui:Label text="Configure terminal launch command to create the initial Neovim server instance:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
                     <ui:DropdownField label="template:" name="terminal-launch-templates-dd"/>
                     <ui:TextField label="command:" placeholder-text="filler text" tooltip="Executable that will be executed whenever you request to open a file for the first time. This has to be accessible (i.e., added in your PATH)." name="terminal-launch-cmd-tf"/>
                     <ui:TextField label="arguments:" placeholder-text="filler text" name="terminal-launch-args-tf" tooltip="Arguments to be passed to the executable above. Text between {} is for special placeholders."/>
                     <ui:TextField label="environments:" placeholder-text="ENV_0=VALUE_0 ENV_1=VALUE_1 ENV_N=VALUE_N" tooltip="A set of environment variables to be passed to this terminal launch process. In the form of a space separated list: ENV_0=VALUE_0 ENV_1=VALUE_1 ... ENV_N=VALUE_N" name="terminal-launch-env-tf"/>
                 </ui:VisualElement>
                 <ui:VisualElement name="jump-to-cursor-pos-args" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; padding-left: 5px; padding-bottom: 5px; border-bottom-color: rgb(77, 77, 77); border-bottom-width: 1px; padding-top: 5px; padding-right: 5px; margin-bottom: 5px; border-top-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;">
-                    <ui:Label text="Configure how Neovim jumps to requested cursor position:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 5px; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
+                    <ui:Label text="Configure how Neovim jumps to requested cursor position:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
                     <ui:DropdownField label="template:" name="jump-to-cursor-pos-templates"/>
                     <ui:TextField label="arguments:" placeholder-text="filler text" name="jump-to-cursor-pos-args-tf" tooltip="Arguments to be passed to NeoVim when a cursor position jump to particular file is requested. Text between {} if for special placeholders (read below)."/>
                 </ui:VisualElement>
+                <ui:VisualElement name="process-timeout" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; margin-bottom: 5px; margin-top: 0; border-top-width: 1px; border-bottom-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;">
+                    <ui:Label text="Change maximum timeout to wait for processes before killing them:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
+                    <ui:IntegerField label="process timeout:" value="150" name="process-timeout-if" max-length="4" tooltip="Process timeout is the maximum time in milliseconds to wait for the spawned process to finish. If the process does not finish within this timeout, it will be killed. This timeout is used when spawning the open-file request process, the jumo-to-cursor-position request process, and the focus-on-neovim process. Smaller values result in smoother experience at the cost of a potential process being killed before it finishes its execution."/>
+                </ui:VisualElement>
                 <ui:VisualElement name="open-file-request-args" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; border-top-width: 1px; border-bottom-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; margin-top: 0; margin-bottom: 5px; margin-left: 0; margin-right: 0; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;">
-                    <ui:Label text="Configure how Neovim opens files when clicked in Unity, per modifier key:" name="Label" enable-rich-text="true" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 5px; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal; border-top-width: 0; border-right-width: 0; border-bottom-width: 0; border-left-width: 0; border-left-color: rgb(102, 102, 102); border-right-color: rgb(102, 102, 102); border-top-color: rgb(102, 102, 102); border-bottom-color: rgb(102, 102, 102);"/>
+                    <ui:Label text="Configure how Neovim opens files when clicked in Unity, per modifier key:" name="Label" enable-rich-text="true" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal; border-top-width: 0; border-right-width: 0; border-bottom-width: 0; border-left-width: 0; border-left-color: rgb(102, 102, 102); border-right-color: rgb(102, 102, 102); border-top-color: rgb(102, 102, 102); border-bottom-color: rgb(102, 102, 102);"/>
                     <ui:VisualElement name="modifier-binding-rows" style="flex-grow: 1;"/>
                 </ui:VisualElement>
-                <ui:VisualElement name="process-timeout" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; margin-bottom: 5px; margin-top: 0; border-top-width: 1px; border-bottom-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;">
-                    <ui:Label text="Change maximum timeout to wait for processes before killing them:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 5px; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
-                    <ui:IntegerField label="process timeout:" value="150" name="process-timeout-if" max-length="4" tooltip="Process timeout is the maximum time in milliseconds to wait for the spawned process to finish. If the process does not finish within this timeout, it will be killed. This timeout is used when spawning the open-file request process, the jumo-to-cursor-position request process, and the focus-on-neovim process. Smaller values result in smoother experience at the cost of a potential process being killed before it finishes its execution."/>
+                <ui:VisualElement name="analyzers" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; margin-bottom: 5px; margin-top: 0; border-top-width: 1px; border-bottom-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;">
+                    <ui:Label text="Add/Remove C# analyzers:" enable-rich-text="false" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
+                    <ui:VisualElement name="add-analyzer" style="flex-grow: 1; flex-direction: row;">
+                        <ui:TextField label="analyzer path:" placeholder-text="path/to/analyzer.dll" name="analyzer-path-tf" value="" style="flex-grow: 1; flex-shrink: 1; padding-bottom: 5px; -unity-font-style: normal;"/>
+                        <ui:Button text="add" name="add-analyzer-btn" style="flex-grow: 0; flex-shrink: 0; align-items: stretch;"/>
+                        <ui:Button text="browse" name="browse-analyzer-btn" style="flex-grow: 0; flex-shrink: 0; align-items: stretch;"/>
+                    </ui:VisualElement>
+                    <ui:VisualElement name="analyzer-rows-parent" style="flex-grow: 1; display: flex;">
+                        <ui:Label text="current in-use analyzers:" style="padding-left: 3px;"/>
+                        <ui:VisualElement name="analyzer-rows" style="flex-grow: 1;"/>
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:ScrollView>
             <ui:VisualElement name="toolbar" style="flex-grow: 0; flex-direction: row; flex-shrink: 0; align-self: auto; align-content: flex-start; align-items: stretch; position: relative; height: auto; width: auto; top: auto; left: auto; justify-content: flex-start; bottom: auto; right: auto;">
                 <ui:Button text="Apply" name="apply" style="margin-right: 3px;"/>
                 <ui:Button text="[+] Add binding" name="add-binding"/>
                 <ui:VisualElement name="spacing" style="flex-grow: 1;"/>
+                <ui:Button text="Regenerate project files" name="regenerate-project-files-btn"/>
                 <ui:Button text="Reset" name="reset" style="margin-left: 25px;"/>
             </ui:VisualElement>
         </ui:VisualElement>
-        <ui:VisualElement name="info-panel" style="flex-grow: 0; width: 400px; flex-shrink: 0; border-left-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); padding-left: 5px; padding-right: 5px; padding-top: 0; padding-bottom: 0; margin-top: 5px; margin-bottom: 5px; margin-right: 0; height: 100%; position: relative; flex-direction: column; justify-content: space-between;">
+        <ui:VisualElement name="info-panel" style="flex-grow: 0; width: 30%; flex-shrink: 0; border-left-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); padding-left: 5px; padding-right: 5px; padding-top: 0; padding-bottom: 0; margin-top: 5px; margin-bottom: 5px; margin-right: 0; height: 100%; position: relative; flex-direction: column; justify-content: space-between;">
             <ui:Label text="Template Info" name="template-info" style="-unity-font-style: bold; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0;"/>
             <ui:VisualElement name="current-template-desc" style="flex-grow: 0; flex-shrink: 0; padding-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;">
                 <ui:Label text="Current template:" name="curr-template-name"/>

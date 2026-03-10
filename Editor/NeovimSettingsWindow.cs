@@ -2,8 +2,10 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
+using Unity.CodeEditor;
 using System.Linq;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Neovim.Editor
 {
@@ -13,6 +15,7 @@ namespace Neovim.Editor
     private Button m_ApplyBtn = null;
     private Button m_AddBindingModifierBtn = null;
     private Button m_ResetBtn = null;
+    private Button m_RegenerateProjectFilesBtn = null;
 #if UNITY_EDITOR_WIN
     private TextField m_ProcessPIDPlaceholderTf = null;
 #endif
@@ -28,6 +31,7 @@ namespace Neovim.Editor
     private static readonly VisualTreeAsset s_MainWindowVT;
     private static readonly VisualTreeAsset s_DefaultModifierBindingVT;
     private static readonly VisualTreeAsset s_ModifierBindingVT;
+    private static readonly VisualTreeAsset s_AnalyzerEntryVT;
 
     private bool m_Dirty;
 
@@ -72,6 +76,13 @@ namespace Neovim.Editor
     ////////////////////////////////////////////////////////////////////////////
     private IntegerField m_ProcessTimeoutIf = null;
 
+    ////////////////////////////////////////////////////////////////////////////
+    // Analyzers
+    ////////////////////////////////////////////////////////////////////////////
+    private VisualElement m_AnalyzerRows;
+    private VisualElement m_AnalyzerRowsParent;
+
+
     // TODO: persistent window position
     static NeovimSettingsWindow() {
       s_OpenFileTemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
@@ -92,18 +103,23 @@ namespace Neovim.Editor
       s_MainWindowVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/settings_window.uxml");
       s_DefaultModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/default_modifier_binding.uxml");
       s_ModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/modifier_binding.uxml");
+      s_AnalyzerEntryVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/analyzer_entry.uxml");
     }
+
 
     // MenuItem Creates a menu item and invokes the static function that follows it when the menu item is selected.
     [MenuItem("Neovim/Settings")]
     public static void ShowWindow()
     {
       var window = GetWindow<NeovimSettingsWindow>(true, "Neovim Settings");
-      window.position = new Rect(Screen.width / 2, Screen.height / 2, 1200, 550);
-      window.minSize = new Vector2(800, 300);
+      int minWidth = Mathf.FloorToInt(Screen.width * 0.5f);
+      int minHeight = Mathf.FloorToInt(Screen.height * 0.5f);
+      window.position = new Rect(Screen.width / 2 - minWidth / 2.0f, Screen.height / 2 - minHeight / 2.0f, minWidth, minHeight);
+      window.minSize = new Vector2(minWidth, minHeight);
       window.saveChangesMessage = "This window has unsaved changes. Would you like to save?";
       window.ShowModalUtility();
     }
+
 
     public override void SaveChanges()
     {
@@ -111,10 +127,12 @@ namespace Neovim.Editor
       base.SaveChanges();
     }
 
+
     public override void DiscardChanges()
     {
       base.DiscardChanges();
     }
+
 
     private void SetDirty(bool val)
     {
@@ -124,22 +142,84 @@ namespace Neovim.Editor
         m_ApplyBtn.SetEnabled(val);
     }
 
+
     // CreateGUI is called when the EditorWindow's rootVisualElement is ready to be populated.
     private void CreateGUI()
     {
       var root = rootVisualElement;
-      root.style.flexGrow = 1;
-      root.style.flexShrink = 1;
 
       VisualElement mainPanel = s_MainWindowVT.Instantiate();
+      mainPanel.style.flexGrow = 1;  // keep this because Unity UIToolkit still sucks...
 
       // toolbar buttons
       m_ApplyBtn = mainPanel.Q<Button>("apply");
       m_ResetBtn = mainPanel.Q<Button>("reset");
       m_AddBindingModifierBtn = mainPanel.Q<Button>("add-binding");
+      m_RegenerateProjectFilesBtn = mainPanel.Q<Button>("regenerate-project-files-btn");
+
       m_ApplyBtn.clicked += OnApplyClick;
       m_ResetBtn.clicked += OnResetClick;
       m_AddBindingModifierBtn.clicked += OnAddModifierBindingClick;
+      m_RegenerateProjectFilesBtn.clicked += OnProjectRegenerationClick;
+
+      // csproj generation settings
+      {
+        var tg0 = mainPanel.Q<Toggle>("embedded-packages-tg");
+        tg0.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Embedded));
+        tg0.RegisterValueChangedCallback(_ =>
+        {
+          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Embedded);
+        });
+
+        var tg1 = mainPanel.Q<Toggle>("local-packages-tg");
+        tg1.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Local));
+        tg1.RegisterValueChangedCallback(_ =>
+        {
+          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Local);
+        });
+
+        var tg2 = mainPanel.Q<Toggle>("registry-packages-tg");
+        tg2.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Registry));
+        tg2.RegisterValueChangedCallback(_ =>
+        {
+          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Registry);
+        });
+
+        var tg3 = mainPanel.Q<Toggle>("git-packages-tg");
+        tg3.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Git));
+        tg3.RegisterValueChangedCallback(_ =>
+        {
+          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Git);
+        });
+
+        var tg4 = mainPanel.Q<Toggle>("built-in-packages-tg");
+        tg4.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.BuiltIn));
+        tg4.RegisterValueChangedCallback(_ =>
+        {
+          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.BuiltIn);
+        });
+
+        var tg5 = mainPanel.Q<Toggle>("local-tarball-packages-tg");
+        tg5.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.LocalTarBall));
+        tg5.RegisterValueChangedCallback(_ =>
+        {
+          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.LocalTarBall);
+        });
+
+        var tg6 = mainPanel.Q<Toggle>("unknown-source-packages-tg");
+        tg6.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Unknown));
+        tg6.RegisterValueChangedCallback(_ =>
+        {
+          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Unknown);
+        });
+
+        var tg7 = mainPanel.Q<Toggle>("player-projects-tg");
+        tg7.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.PlayerAssemblies));
+        tg7.RegisterValueChangedCallback(_ =>
+        {
+          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.PlayerAssemblies);
+        });
+      }
 
       // nvim executable path args
       {
@@ -256,6 +336,49 @@ namespace Neovim.Editor
         });
       }
 
+      // analyzers
+      {
+        m_AnalyzerRows = mainPanel.Q<VisualElement>("analyzer-rows");
+        m_AnalyzerRowsParent = mainPanel.Q<VisualElement>("analyzer-rows-parent");
+        var analyzerPathTf = mainPanel.Q<TextField>("analyzer-path-tf");
+        var browseBtn = mainPanel.Q<Button>("browse-analyzer-btn");
+        var addBtn = mainPanel.Q<Button>("add-analyzer-btn");
+        
+        addBtn.SetEnabled(false);
+
+        // save color
+        var defaultColor = analyzerPathTf.style.color;
+        analyzerPathTf.RegisterValueChangedCallback(e => {
+          if (File.Exists(e.newValue) && Path.GetExtension(e.newValue) == ".dll")
+          {
+            addBtn.SetEnabled(true);
+            return;
+          }
+          addBtn.SetEnabled(false);
+        });
+
+        browseBtn.clicked += () =>
+        {
+          string p = EditorUtility.OpenFilePanel("Select analyzer to add (.dll)", "", "dll");
+          if (NeovimCodeEditor.TryAddAnalyzer(p))
+          {
+            RebuildAnalyzerRows();
+            return;
+          }
+        };
+
+        addBtn.clicked += () =>
+        {
+          if (NeovimCodeEditor.TryAddAnalyzer(analyzerPathTf.value))
+          {
+            RebuildAnalyzerRows();
+            return;
+          }
+        };
+
+        RebuildAnalyzerRows();
+      }
+
       // info panel (right panel)
       {
         m_InfoName = mainPanel.Q<Label>("curr-template-name");
@@ -307,11 +430,19 @@ namespace Neovim.Editor
       SetDirty(false);
     }
 
+
     private void OnApplyClick()
     {
       if (!m_ApplyBtn.enabledSelf) return;
       Save();
     }
+
+
+    private void OnProjectRegenerationClick()
+    {
+      CodeEditor.Editor.CurrentCodeEditor.SyncAll();
+    }
+
 
     private void OnAddModifierBindingClick()
     {
@@ -329,6 +460,7 @@ namespace Neovim.Editor
       RebuildModifierBindingRows();
     }
 
+
     private void OnResetClick()
     {
       NeovimCodeEditor.ResetConfig();
@@ -337,6 +469,7 @@ namespace Neovim.Editor
       ShowWindow();
     }
 
+
     private static string GetJumpToCursorPosTemplateName(string args)
     {
       var match = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
@@ -344,12 +477,14 @@ namespace Neovim.Editor
       return match.Name ?? k_CustomLabel;
     }
 
+
     private static string GetOpenFileArgsTemplateName(string args)
     {
       var match = NeovimCodeEditor.s_OpenFileArgsTemplates
         .FirstOrDefault(t => t.Args == args);
       return match.Name ?? k_CustomLabel;
     }
+
 
     private Label CreateLabel(string text, int margin = 5)
     {
@@ -362,6 +497,7 @@ namespace Neovim.Editor
       l.style.marginRight = margin;
       return l;
     }
+
 
     private void SetInfoPanel((string Args, string Name, string Desc)? template)
     {
@@ -376,7 +512,41 @@ namespace Neovim.Editor
         m_InfoDesc.text = template.Value.Desc;
       }
     }
+
+
+    private void RebuildAnalyzerRows()
+    {
+      m_AnalyzerRows.Clear();
+      if (!NeovimCodeEditor.s_Config.Analyzers.Any())
+      {
+        m_AnalyzerRowsParent.visible = false;
+        return;
+      }
+
+      m_AnalyzerRowsParent.visible = true;
+      // show currently used custom analyzers
+      for (int i = NeovimCodeEditor.s_Config.Analyzers.Count - 1; i >= 0; --i)
+      {
+        int j = i;
+        VisualElement row = s_AnalyzerEntryVT.Instantiate();
+        var analyzerNameLabel = row.Q<Label>("analyzer-name");
+        var analyzerPathLabel = row.Q<Label>("analyzer-path");
+        var deleteBtn = row.Q<Button>("delete-btn");
+
+        analyzerNameLabel.text = $"{Path.GetFileNameWithoutExtension(NeovimCodeEditor.s_Config.Analyzers[j])}:";
+        analyzerPathLabel.text = NeovimCodeEditor.s_Config.Analyzers[j];
+
+        deleteBtn.clicked += () =>
+        {
+          NeovimCodeEditor.DelAnalyzerAt(j);
+          RebuildAnalyzerRows();
+        };
+
+        m_AnalyzerRows.Add(row);
+      }
+    }
     
+
     private void RebuildModifierBindingRows()
     {
       m_ModifierBindingRows.Clear();

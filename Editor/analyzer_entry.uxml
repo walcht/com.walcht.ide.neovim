@@ -1,0 +1,7 @@
+<ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
+    <ui:VisualElement name="analyzer-entry" style="flex-grow: 0; flex-direction: row; height: 25px; flex-shrink: 0; padding-top: 3px; padding-right: 5px; padding-bottom: 3px; padding-left: 5px;">
+        <ui:Label text="analyzer name:" name="analyzer-name" style="padding-right: 10px; justify-content: flex-start; align-content: flex-start; -unity-text-align: middle-left;"/>
+        <ui:Label text="path" name="analyzer-path" style="flex-grow: 1; flex-shrink: 1; padding-right: 10px; -unity-text-align: middle-left; text-overflow: ellipsis; white-space: normal;"/>
+        <ui:Button text="X" name="delete-btn" style="-unity-text-align: middle-center; color: rgb(229, 229, 229); -unity-font-style: bold;"/>
+    </ui:VisualElement>
+</ui:UXML>

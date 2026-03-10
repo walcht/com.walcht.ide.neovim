@@ -390,78 +390,8 @@ namespace Neovim.Editor
 
       NeovimCodeEditor editor = new(s_Generator);
       CodeEditor.Register(editor);
-
-      // Clean up our nvim server instance when Unity quits
-      EditorApplication.quitting += CleanupNvimServer;
     }
 
-    /// <summary>
-    /// Kill the nvim server instance owned by this Unity process on exit. This prevents orphaned nvim processes when
-    /// Unity crashes.
-    /// Only runs if KillNvimOnQuit is enabled in config (default: false to preserve nvim session).
-    /// </summary>
-    private static void CleanupNvimServer()
-    {
-      // Check if cleanup is enabled - default to false to preserve nvim sessions
-      if (!s_Config.KillNvimOnQuit)
-        return;
-
-#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-      string socketPath = s_ServerSocket;
-      var psi = new ProcessStartInfo
-      {
-        // TODO: -c option is not available in all shells - this will crush for some users
-        FileName = "/bin/sh",
-        Arguments = $"-c \"lsof '{socketPath}' 2>/dev/null | grep LISTEN | awk '{{print $2}}'\"",
-        RedirectStandardOutput = true,
-        UseShellExecute = false,
-        CreateNoWindow = true
-      };
-
-      try
-      {
-        using var p = Process.Start(psi);
-        if (p != null)
-        {
-          string output = p.StandardOutput.ReadToEnd();
-          p.WaitForExit();
-
-          if (!string.IsNullOrWhiteSpace(output) && int.TryParse(output.Trim(), out int pid))
-          {
-            // Kill the nvim process holding our socket
-            var killPsi = new ProcessStartInfo
-            {
-              FileName = "/bin/sh",
-              Arguments = $"-c \"kill {pid} 2>/dev/null; kill -9 {pid} 2>/dev/null\"",
-              UseShellExecute = false,
-              CreateNoWindow = true
-            };
-            using var killP = Process.Start(killPsi);
-            killP?.WaitForExit();
-          }
-        }
-
-        // Clean up socket file
-        var cleanPsi = new ProcessStartInfo
-        {
-          FileName = "/bin/sh",
-          Arguments = $"-c \"rm -f '{socketPath}'\"",
-          UseShellExecute = false,
-          CreateNoWindow = true
-        };
-        using var cleanP = Process.Start(cleanPsi);
-        cleanP?.WaitForExit();
-      }
-      catch (System.Exception)
-      {
-        // Silently fail during cleanup - we're exiting anyway
-      }
-#elif UNITY_EDITOR_WIN
-      // Windows cleanup - kill the nvim process we started
-      // Note: This is harder on Windows without tracking the PID
-      // Users can use the "Kill Orphaned Server" menu option if needed
-#endif
-    }
 
     public void CreateIfDoesntExist()
     {
@@ -546,14 +476,30 @@ namespace Neovim.Editor
       return !Equals(installation, default(CodeEditor.Installation));
     }
 
-    private static void TryAddAnalyzer(string path)
+    /// <summary>
+    /// Tries to add the provided analyzer. If successful, the underlying config is serialized and the project
+    /// generator is syncronized.
+    /// </summary>
+    public static bool TryAddAnalyzer(string path)
     {
       if (s_Config.TryAddAnalyzer(path))
       {
-        Debug.Log($"[neovim.ide] added analyzer: {Path.GetFileName(path)}");
+        // Debug.Log($"[neovim.ide] added analyzer: {Path.GetFileName(path)}");
         s_Config.Save();
         s_Generator.Sync();
+        return true;
       }
+      return false;
+    }
+
+    /// <summary>
+    /// Deletes analyzer at provided index, serializes the underlying config, and syncs the generator.
+    /// </summary>
+    public static void DelAnalyzerAt(int i)
+    {
+      s_Config.DelAnalyzerAt(i);
+      s_Config.Save();
+      s_Generator.Sync();
     }
 
     private const int EDITOR_GUI_ELEMENT_HEIGHT = 37;
@@ -571,180 +517,12 @@ namespace Neovim.Editor
       // Debug.Log("[neovim.ide] reset the previously saved neovim config");
     }
 
-    /// <summary>
-    /// Kill all orphaned nvim server processes that may be left behind after Unity crashes.
-    /// Handles both legacy (/tmp/nvimsocket) and per-instance (/tmp/nvimsocket_<PID>) socket patterns.
-    /// This resolves issues where the plugin hangs because the socket is held by a zombie process.
-    /// </summary>
-    public static void KillOrphanedServer()
-    {
-      int killedCount = 0;
-
-#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-      // Find nvim processes listening on Unity nvim sockets (both old and new patterns)
-      var psi = new ProcessStartInfo
-      {
-        FileName = "/bin/sh",
-        Arguments = "-c \"ps aux | grep 'nvim.*--listen.*nvimsocket' | grep -v grep | awk '{print $2}'\"",
-        RedirectStandardOutput = true,
-        UseShellExecute = false,
-        CreateNoWindow = true
-      };
-
-      using var p = Process.Start(psi);
-      if (p != null)
-      {
-        string output = p.StandardOutput.ReadToEnd();
-        p.WaitForExit();
-
-        var pids = output.Split(new[] { '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-        foreach (string pidStr in pids)
-        {
-          if (int.TryParse(pidStr, out int pid))
-          {
-            try
-            {
-              // Try SIGTERM first
-              var killPsi = new ProcessStartInfo
-              {
-                FileName = "/bin/sh",
-                Arguments = $"-c \"kill {pid} 2>/dev/null\"",
-                UseShellExecute = false,
-                CreateNoWindow = true
-              };
-              using var killP = Process.Start(killPsi);
-              killP?.WaitForExit();
-
-              // Give it a moment, then force kill if still alive
-              System.Threading.Thread.Sleep(100);
-              killPsi.Arguments = $"-c \"kill -9 {pid} 2>/dev/null\"";
-              using var killP2 = Process.Start(killPsi);
-              killP2?.WaitForExit();
-
-              killedCount++;
-            }
-            catch (System.Exception e)
-            {
-              Debug.LogWarning($"[neovim.ide] failed to kill nvim process {pid}: {e.Message}");
-            }
-          }
-        }
-      }
-
-      // Also clean up all Unity nvim socket files (both old and new patterns)
-      var cleanPsi = new ProcessStartInfo
-      {
-        FileName = "/bin/sh",
-        Arguments = "-c \"rm -f /tmp/nvimsocket /tmp/nvimsocket_*\"",
-        UseShellExecute = false,
-        CreateNoWindow = true
-      };
-      using var cleanP = Process.Start(cleanPsi);
-      cleanP?.WaitForExit();
-
-#elif UNITY_EDITOR_WIN
-      // Windows: find nvim processes with --listen argument
-      var psi = new ProcessStartInfo
-      {
-        FileName = "powershell",
-        Arguments = "-Command \"Get-Process nvim -ErrorAction SilentlyContinue | Where-Object {$_.Path -like '*--listen*'} | Select-Object -ExpandProperty Id\"",
-        RedirectStandardOutput = true,
-        UseShellExecute = false,
-        CreateNoWindow = true
-      };
-
-      using var p = Process.Start(psi);
-      if (p != null)
-      {
-        string output = p.StandardOutput.ReadToEnd();
-        p.WaitForExit();
-
-        var pids = output.Split(new[] { '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-        foreach (string pidStr in pids)
-        {
-          if (int.TryParse(pidStr, out int pid))
-          {
-            try
-            {
-              var proc = Process.GetProcessById(pid);
-              proc.Kill();
-              killedCount++;
-            }
-            catch (System.Exception e)
-            {
-              Debug.LogWarning($"[neovim.ide] failed to kill nvim process {pid}: {e.Message}");
-            }
-          }
-        }
-      }
-#endif
-
-      if (killedCount > 0)
-      {
-        Debug.Log($"[neovim.ide] killed {killedCount} orphaned nvim server process(es). You can now open files in Unity.");
-      }
-      else
-      {
-        Debug.Log("[neovim.ide] no orphaned nvim server processes found. The plugin should work normally.");
-      }
-    }
-
     // Unity calls this method when it populates "Preferences/External Tools"
     // in order to allow the code editor to generate necessary GUI. For example,
     // when creating an an argument field for modifying the arguments sent to
     // the code editor.
     public void OnGUI()
     {
-      EditorGUILayout.BeginHorizontal();
-      {
-        TryAddAnalyzer(EditorGUILayout.DelayedTextField("Add analyzer: ", string.Empty));
-        if (GUILayout.Button("Browse", GUILayout.Width(100)))
-          TryAddAnalyzer(EditorUtility.OpenFilePanel("Select analyzer to add (.dll)", "", "dll"));
-      }
-      EditorGUILayout.EndHorizontal();
-
-      // show currently used custom analyzers
-      if (s_Config.Analyzers.Any())
-      {
-        EditorGUILayout.LabelField("Current analyzers: ");
-        EditorGUI.indentLevel++;
-        m_ScrollViewPos = EditorGUILayout.BeginScrollView(m_ScrollViewPos, GUILayout.Height(Math.Min(s_Config.Analyzers.Count * EDITOR_GUI_ELEMENT_HEIGHT, 3 * EDITOR_GUI_ELEMENT_HEIGHT)));
-        {
-          for (int i = s_Config.Analyzers.Count - 1; i >= 0; --i)
-          {
-            EditorGUILayout.BeginHorizontal();
-            {
-              EditorGUILayout.LabelField(Path.GetFileNameWithoutExtension(s_Config.Analyzers[i]) + ": ", GUILayout.Width(233));
-              EditorGUILayout.LabelField(s_Config.Analyzers[i], GUILayout.ExpandWidth(true));
-              if (GUILayout.Button("Remove", GUILayout.Width(100)))
-              {
-                s_Config.DelAnalyzerAt(i);
-                s_Config.Save();
-                s_Generator.Sync();
-              }
-            }
-            EditorGUILayout.EndHorizontal();
-          }
-        }
-        EditorGUILayout.EndScrollView();
-        EditorGUI.indentLevel--;
-      }
-
-      EditorGUILayout.LabelField("Generate .csproj files for:");
-      EditorGUI.indentLevel++;
-      {
-        SettingsButton(ProjectGenerationFlag.Embedded, "Embedded packages", "");
-        SettingsButton(ProjectGenerationFlag.Local, "Local packages", "");
-        SettingsButton(ProjectGenerationFlag.Registry, "Registry packages", "");
-        SettingsButton(ProjectGenerationFlag.Git, "Git packages", "");
-        SettingsButton(ProjectGenerationFlag.BuiltIn, "Built-in packages", "");
-        SettingsButton(ProjectGenerationFlag.LocalTarBall, "Local tarball", "");
-        SettingsButton(ProjectGenerationFlag.Unknown, "Packages from unknown sources", "");
-        SettingsButton(ProjectGenerationFlag.PlayerAssemblies, "Player projects", "For each player project generate an additional csproj with the name 'project-player.csproj'");
-        RegenerateProjectFiles();
-      }
-      EditorGUI.indentLevel--;
-
       // ==================== Neovim Settings Button ====================
       EditorGUILayout.Space();
       EditorGUILayout.LabelField("Neovim Settings", EditorStyles.boldLabel);
@@ -762,26 +540,17 @@ namespace Neovim.Editor
     }
 
 
-    private void RegenerateProjectFiles()
+    public static void ToggleProjectGenerationFlag(ProjectGenerationFlag preference)
     {
-      var rect = EditorGUI.IndentedRect(EditorGUILayout.GetControlRect());
-      rect.width = 252;
-      if (GUI.Button(rect, "Regenerate project files"))
-      {
-        s_Generator.Sync();
-      }
+      s_Generator.AssemblyNameProvider.ToggleProjectGeneration(preference);
     }
 
 
-    private void SettingsButton(ProjectGenerationFlag preference, string guiMessage, string toolTip)
+    public static bool GetProjectGenerationFlag(ProjectGenerationFlag preference)
     {
-      var prevValue = s_Generator.AssemblyNameProvider.ProjectGenerationFlag.HasFlag(preference);
-      var newValue = EditorGUILayout.Toggle(new GUIContent(guiMessage, toolTip), prevValue);
-      if (newValue != prevValue)
-      {
-        s_Generator.AssemblyNameProvider.ToggleProjectGeneration(preference);
-      }
+      return s_Generator.AssemblyNameProvider.ProjectGenerationFlag.HasFlag(preference);
     }
+
 
     // When you change Assets in Unity, this method for the current chosen
     // instance of IExternalCodeEditor parses the new and changed Assets.
