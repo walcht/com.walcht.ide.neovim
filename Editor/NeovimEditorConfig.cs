@@ -35,6 +35,23 @@ namespace Neovim.Editor
   {
     private bool m_Dirty = false;
 
+    private string m_NvimExecutablePath;
+
+    /// <summary>
+    /// Absolute path to the Neovim executable currently in use.
+    /// </summary>
+    public string NvimExecutablePath
+    {
+      get => m_NvimExecutablePath;
+      set
+      {
+        if (value == m_NvimExecutablePath)
+          return;
+        m_NvimExecutablePath = value;
+        m_Dirty = true;
+      }
+    }
+
     private int m_ProcessTimeout = 150;
     public int ProcessTimeout
     {

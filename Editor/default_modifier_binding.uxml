@@ -1,0 +1,7 @@
+<ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <ui:VisualElement style="flex-grow: 1; padding-left: 5px; padding-right: 5px; padding-top: 0; padding-bottom: 5px;">
+        <ui:Label text="default (no modifier):" name="title" style="-unity-font-style: bold; margin-bottom: 4px;"/>
+        <ui:DropdownField label="" name="templates-dd" style="margin-top: 0; margin-right: 0; margin-bottom: 4px; margin-left: 0;"/>
+        <ui:TextField label="" placeholder-text="filler text" name="args-tf" style="margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0;"/>
+    </ui:VisualElement>
+</ui:UXML>

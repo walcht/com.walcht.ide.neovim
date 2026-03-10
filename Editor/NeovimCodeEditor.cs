@@ -24,15 +24,22 @@ namespace Neovim.Editor
     public static NeovimEditorConfig s_Config = new();
 
     // Unique identifier for this Unity instance (PID)
-    static readonly string s_InstanceId = Process.GetCurrentProcess().Id.ToString();
+    public static readonly string s_InstanceId = Process.GetCurrentProcess().Id.ToString();
 
 #if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-    static string s_ServerSocket => $"/tmp/nvimsocket_{Process.GetCurrentProcess().Id}";
+    static string s_ServerSocket = "/tmp/nvimsocket";
 #else // UNITY_EDITOR_WIN
-    // this will be initialized to some "127.0.0.1:<random-port>" because Unix domain sockets on Windows are a bitch
-    static string s_ServerSocket;
-    static readonly string s_GetProcessPPIDPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessPPID.ps1");
+    // this is initialized to some "127.0.0.1:<random-port>" because Unix domain sockets on Windows are a bitch
+    // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
+    // available for socket type" so we have to listen to a TCP socket instead with a local addr and a random port
+    static string s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
+    public static readonly string s_GetProcessPPIDPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessPPID.ps1");
 #endif
+
+    public static string ServerSocket
+    {
+      get => s_ServerSocket;
+    }
 
     /// <summary>
     ///   These are the default template arguments that one of which can potentially be used
@@ -104,40 +111,40 @@ namespace Neovim.Editor
 #endif
 
     // terminal launch command template - use this template for adding new launch cmds
-    public static readonly (string, string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}", "{environment}");
+    public static readonly (string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}");
 
     // list of neovim launch cmds from popular terminal emulators - this is
     // just a hardcoded list so that non-tech-savy users can just get to
     // using Neovim with minimal friction.
-    public static readonly (string, string, string)[] s_TermLaunchCmds =
+    public static readonly (string, string)[] s_TermLaunchCmds =
 #if UNITY_EDITOR_LINUX
     {
-      ("gnome-terminal", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("ptyxis", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
+      ("gnome-terminal", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}"),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}"),
+      ("ptyxis", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}"),
+      ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket}"),
+      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'"),
     };
 #elif UNITY_EDITOR_OSX
     {
-      ("/Applications/kitty.app/Contents/MacOS/kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("/Applications/Alacritty.app/Contents/MacOS/alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("/Applications/ghostty.app/Contents/MacOS/ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
-      ("/Applications/iTerm.app/Contents/MacOS/iTerm2", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}", "{environment}"),
-      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'", "{environment}"),
-      ("kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket}", "{environment}"),
+      ("/Applications/kitty.app/Contents/MacOS/kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket}"),
+      ("/Applications/Alacritty.app/Contents/MacOS/alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}"),
+      ("/Applications/ghostty.app/Contents/MacOS/ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'"),
+      ("/Applications/iTerm.app/Contents/MacOS/iTerm2", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}"),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}"),
+      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'"),
+      ("kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket}"),
     };
 #else  // UNITY_EDITOR_WIN
     {
       // on Powershell, replace the ';' with "`;"
-      ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}", "{environment}"),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}", "{environment}")
+      ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}"),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}")
     };
 #endif
 
-    // Neovim installation paths on Linux here - the first valid path is picked otherwise the ENV variable TODO is
-    // checked
+    // Fallback Neovim installation paths (only used in case nvim executable path is not explicitly provided). The first
+    // valid path is picked. "nvim(.exe)" is a special case where PATH is checked for its existence.
     private static readonly string[] s_CandidateNeovimPaths =
 #if UNITY_EDITOR_LINUX
      {
@@ -169,6 +176,12 @@ namespace Neovim.Editor
     /// </summary>
     private static bool SetDefaults()
     {
+
+      if (s_DiscoveredNeovimInstallations.Any())
+      {
+        s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
+      }
+
       // get terminal launch cmd and its args from Unity editor preferences
       string termLaunchCmd = s_Config.TermLaunchCmd;
       string termLaunchArgs = s_Config.TermLaunchArgs;
@@ -181,7 +194,7 @@ namespace Neovim.Editor
         bool s = false;
         foreach (var termLaunch in s_TermLaunchCmds)
         {
-          if (TryChangeTermLaunchCmd(termLaunch))
+          if (TryChangeTermLaunchCmd(termLaunch.Item1, termLaunch.Item2))
           {
             s = true;
             break;
@@ -192,7 +205,8 @@ namespace Neovim.Editor
         {
           // you can't show a GUI window here -- so just log a warning
           Debug.LogError($"[neovim.ide] no valid terminal launcher is available. " +
-              "You have to set the terminal launch command by going to the menu item: Neovim => ChangeTerminalLaunchCmd");
+              "You have to set the terminal launch command by going to the menu item: Neovim => Settings");
+          // TODO: open settings menu
           return false;
         }
       }
@@ -240,6 +254,22 @@ namespace Neovim.Editor
       s_Generator.SetAnalyzers(s_Config.Analyzers);
     }
 
+    public static string GetNeovimVersion(string p)
+    {
+      // get Neovim installation version
+      string version = "v-unknown";
+      using var proc = ProcessUtils.HeadlessProcess();
+      proc.StartInfo.FileName = p;
+      proc.StartInfo.Arguments = "--version";
+      proc.RunWithAssertion(s_Config.ProcessTimeout);
+      var line = proc.StandardOutput.ReadLine();
+      if (line != null)
+      {
+        version = line[(line.IndexOf(' ') + 1)..];
+      }
+      return version;
+    }
+
     // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
     static NeovimCodeEditor()
     {
@@ -248,39 +278,58 @@ namespace Neovim.Editor
 
       InitConfig();
 
-      // initialize the discovered Neovim installations array
-      // the first 'path' is usually set to "nvim" (or "nvim.exe"). That is obviously not a path but the expected name
-      // of Neovim on PATH (which is what the CmdPath does here).
-      s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
-        .Select(p => p = Path.IsPathRooted(p) ? p : ProcessUtils.CmdPath(p, s_Config.ProcessTimeout))
-        .Where(p => p != null && File.Exists(p))
-        .Select(p =>
+      // if nvim executable path is already provided and is valid
+      {
+        string p = NeovimCodeEditor.s_Config.NvimExecutablePath;
+        string v;
+        if (!string.IsNullOrWhiteSpace(p) && Path.IsPathRooted(p) && File.Exists(p)
+            && (v = GetNeovimVersion(p)) != "v-unknown")
         {
-          // get Neovim installation version
-          string version = "v-unknown";
-          using var proc = ProcessUtils.HeadlessProcess();
-          proc.StartInfo.FileName = p;
-          proc.StartInfo.Arguments = "--version";
-          proc.RunWithAssertion(s_Config.ProcessTimeout);
-          var line = proc.StandardOutput.ReadLine();
-          if (line != null)
+          s_DiscoveredNeovimInstallations = new CodeEditor.Installation[] { new CodeEditor.Installation
           {
-            version = line[(line.IndexOf(' ') + 1)..];
-          }
-          return new CodeEditor.Installation
-          {
-            Name = $"Neovim {version}",
-            Path = p,
-          };
-        })
-        .ToArray();
+            Name = $"Neovim {v}",
+            Path = NeovimCodeEditor.s_Config.NvimExecutablePath
+          }};
+        }
+        else
+        {
+          Debug.LogWarning("[neovim.ide] the provided nvim executable path is no longer valid. Falling back to "
+              + "automated nvim installation discovery (consider updating path via top menu: Neovim -> Settings ).");
+          NeovimCodeEditor.s_Config.NvimExecutablePath = null;
+        }
+      }
 
-      // do NOT proceed if there aren't any discovered Neovim installations
+      // initialize the discovered Neovim installations array. The first 'path' is usually set to "nvim"
+      // (or "nvim.exe"). That is obviously not a path but the expected name of Neovim on PATH (which is what the
+      // CmdPath does here).
       if (!s_DiscoveredNeovimInstallations.Any())
       {
-        Debug.LogWarning("[neovim.ide] no Neovim installation was discovered");
+        s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
+          .Select(p => p = Path.IsPathRooted(p) ? p : ProcessUtils.CmdPath(p, s_Config.ProcessTimeout))
+          .Where(p => p != null && File.Exists(p))
+          .Select(p =>
+          {
+            return new CodeEditor.Installation
+            {
+              Name = $"Neovim {GetNeovimVersion(p)}",
+              Path = p,
+            };
+          })
+          .ToArray();
+      }
+
+      // do NOT proceed if there aren't any discovered Neovim installations (i.e., not explicitly supplied in settings
+      // and not installed in a common path).
+      if (!s_DiscoveredNeovimInstallations.Any())
+      {
+        Debug.LogWarning("[neovim.ide] no Neovim installation was discovered. Consider explicitly providing an nvim "
+            + "executable path via top menu: Neovim -> Settings");
+        // TODO: show setting window
         return;
       }
+
+      // we use the first discovered/set nvim installation path
+      NeovimCodeEditor.s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
 
 #if UNITY_EDITOR_LINUX
       s_LinuxPlatform = DetermineLinuxDesktopEnvironment();
@@ -347,8 +396,8 @@ namespace Neovim.Editor
     }
 
     /// <summary>
-    /// Kill the nvim server instance owned by this Unity process on exit.
-    /// This prevents orphaned nvim processes when Unity crashes.
+    /// Kill the nvim server instance owned by this Unity process on exit. This prevents orphaned nvim processes when
+    /// Unity crashes.
     /// Only runs if KillNvimOnQuit is enabled in config (default: false to preserve nvim session).
     /// </summary>
     private static void CleanupNvimServer()
@@ -361,6 +410,7 @@ namespace Neovim.Editor
       string socketPath = s_ServerSocket;
       var psi = new ProcessStartInfo
       {
+        // TODO: -c option is not available in all shells - this will crush for some users
         FileName = "/bin/sh",
         Arguments = $"-c \"lsof '{socketPath}' 2>/dev/null | grep LISTEN | awk '{{print $2}}'\"",
         RedirectStandardOutput = true,
@@ -438,10 +488,8 @@ namespace Neovim.Editor
     }
 #endif
 
-    public static bool TryChangeTermLaunchCmd((string, string, string) termLaunch)
+    public static bool TryChangeTermLaunchCmd(string cmd, string args, string env = null)
     {
-      (string cmd, string args, string env) = termLaunch;
-
       if (cmd.Contains("{app}"))  // in case the Neovim executable is invoked directly
       {
         cmd = cmd.Replace("{app}", CodeEditor.CurrentEditorPath);
@@ -472,7 +520,7 @@ namespace Neovim.Editor
       return true;
     }
 
-    private static readonly CodeEditor.Installation[] s_DiscoveredNeovimInstallations;
+    private static readonly CodeEditor.Installation[] s_DiscoveredNeovimInstallations = new CodeEditor.Installation[0];
     public CodeEditor.Installation[] Installations => s_DiscoveredNeovimInstallations;
 
 
@@ -520,7 +568,7 @@ namespace Neovim.Editor
     {
       EditorPrefs.DeleteKey("NvimUnityConfigJson");
       InitConfig();
-      Debug.Log("[neovim.ide] reset the previously saved neovim config");
+      // Debug.Log("[neovim.ide] reset the previously saved neovim config");
     }
 
     /// <summary>
@@ -755,7 +803,11 @@ namespace Neovim.Editor
     }
 
 
-    public bool IsNvimServerInstanceAlreadyRunning()
+    /// <summary>
+    /// Checks if an nvim server instance is currently running (for this or previous Unity session) by checking
+    /// whether the current server socket is live.
+    /// </summary>
+    public static bool IsNvimServerInstanceAlreadyRunning()
     {
 #if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
       // Connect to the domain socket rather than checking file existence — a stale socket file is
@@ -812,12 +864,6 @@ namespace Neovim.Editor
 
       if (!IsNvimServerInstanceAlreadyRunning())
       {
-#if UNITY_EDITOR_WIN
-        // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
-        // available for socket type" so we have to listen to a TCP socket instead with a local addr and a random port
-        s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
-#endif
-
         try
         {
           using Process p = new();
@@ -834,7 +880,7 @@ namespace Neovim.Editor
           ;
 
           // pass optionally-set environment variables to process
-          if (!string.IsNullOrWhiteSpace(termLaunchEnv) && !termLaunchEnv.Contains("{environment}"))
+          if (!string.IsNullOrWhiteSpace(termLaunchEnv))
           {
             foreach (var env in termLaunchEnv.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             {

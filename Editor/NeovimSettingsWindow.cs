@@ -7,590 +7,436 @@ using System.Collections.Generic;
 
 namespace Neovim.Editor
 {
-  public class NeovimSettingsWindow : EditorWindow
+  public class NeovimSettingsWindow: EditorWindow
   {
-    private const string k_WindowTitle = "Neovim Settings";
-    private const string k_CustomLabel = "Custom";
+    // toolbar
+    private Button m_ApplyBtn = null;
+    private Button m_AddBindingModifierBtn = null;
+    private Button m_ResetBtn = null;
+#if UNITY_EDITOR_WIN
+    private TextField m_ProcessPIDPlaceholderTf = null;
+#endif
 
-    // File Opening section state
-    private List<ModifierBinding> m_Bindings;
-    private VisualElement m_BindingRows;
+    // right panel stuff
+    private TextField m_AppPlaceholderTf;
+    private TextField m_ServerSocketTf;
+    private TextField m_InstanceIdTf;
     private Label m_InfoName;
     private Label m_InfoDesc;
 
-    private List<string> m_TemplateNames;
+    // visual tree (i.e., uxml) assets
+    private static readonly VisualTreeAsset s_MainWindowVT;
+    private static readonly VisualTreeAsset s_DefaultModifierBindingVT;
+    private static readonly VisualTreeAsset s_ModifierBindingVT;
 
-    [MenuItem("Window/Neovim")]
-    public static void ShowWindow()
-    {
-      var window = GetWindow<NeovimSettingsWindow>();
-      window.titleContent = new GUIContent(k_WindowTitle);
-      window.minSize = new Vector2(600, 400);
-    }
+    private bool m_Dirty;
 
-    public void CreateGUI()
-    {
-      m_TemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
+    ////////////////////////////////////////////////////////////////////////////
+    // nvim executable path
+    ////////////////////////////////////////////////////////////////////////////
+    private TextField m_NvimExecutablePathTf = null;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Jump-to-cursor position args
+    ////////////////////////////////////////////////////////////////////////////
+    private TextField m_JumpToCursorPosArgsTf;
+    private static readonly List<string> s_JumpToCursorPosTemplateNames;
+    private static readonly string k_CustomLabel = "Custom";
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Open-file-request args
+    ////////////////////////////////////////////////////////////////////////////
+    private static readonly Dictionary<string, int> s_OpenFileModifiers = new Dictionary<string, int> {
+       ["SHIFT"] = (int)EventModifiers.Shift,
+       ["CTRL"] = (int)EventModifiers.Control,
+       ["ALT"] = (int)EventModifiers.Alt,
+       ["SHIFT+CTRL"] = (int)EventModifiers.Shift | (int)EventModifiers.Control,
+       ["SHIFT+ALT"] = (int)EventModifiers.Shift | (int)EventModifiers.Alt,
+       ["CTRL+ALT"] = (int)EventModifiers.Control | (int)EventModifiers.Alt,
+       ["SHIFT+CTRL+ALT"] = (int)EventModifiers.Shift | (int)EventModifiers.Control | (int)EventModifiers.Alt
+    };
+    private List<ModifierBinding> m_ModifierBindings;
+    private VisualElement m_ModifierBindingRows;
+    private static readonly List<string> s_OpenFileTemplateNames;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Terminal launch cmd args
+    ////////////////////////////////////////////////////////////////////////////
+    private TextField m_TermLaunchCmdTf;
+    private TextField m_TermLaunchArgsTf;
+    private TextField m_TermLaunchEnvTf;
+    private static readonly List<string> s_TermLaunchCmdTemplateNames;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Process timeout
+    ////////////////////////////////////////////////////////////////////////////
+    private IntegerField m_ProcessTimeoutIf = null;
+
+    // TODO: persistent window position
+    static NeovimSettingsWindow() {
+      s_OpenFileTemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
         .Select(t => t.Name)
         .Append(k_CustomLabel)
         .ToList();
-      // Create TabView with persistent state
-      var tabView = new TabView();
-      tabView.viewDataKey = "neovim-settings-tabview";
-      tabView.style.flexGrow = 1;
 
-      // Tab 1: General (Behavior + Maintenance)
-      var generalTab = new Tab("General");
-      var generalContent = new VisualElement();
-      generalContent.style.paddingTop = 10;
-      generalContent.style.paddingBottom = 10;
-      generalContent.style.paddingLeft = 10;
-      generalContent.style.paddingRight = 10;
-      CreateBehaviorSection(generalContent);
-      AddSeparator(generalContent);
-      CreateMaintenanceSection(generalContent);
-      generalTab.Add(generalContent);
-      tabView.Add(generalTab);
-
-      // Tab 2: Terminal
-      var terminalTab = new Tab("Terminal");
-      var terminalContent = new VisualElement();
-      terminalContent.style.paddingTop = 10;
-      terminalContent.style.paddingBottom = 10;
-      terminalContent.style.paddingLeft = 10;
-      terminalContent.style.paddingRight = 10;
-      CreateTerminalSection(terminalContent);
-      terminalTab.Add(terminalContent);
-      tabView.Add(terminalTab);
-
-      // Tab 3: File Opening
-      var fileOpeningTab = new Tab("File Opening");
-      var fileOpeningContent = new VisualElement();
-      fileOpeningContent.style.paddingTop = 10;
-      fileOpeningContent.style.paddingBottom = 10;
-      fileOpeningContent.style.paddingLeft = 10;
-      fileOpeningContent.style.paddingRight = 10;
-      CreateFileOpeningSection(fileOpeningContent);
-      fileOpeningTab.Add(fileOpeningContent);
-      tabView.Add(fileOpeningTab);
-
-      rootVisualElement.Add(tabView);
-    }
-
-    private void CreateBehaviorSection(VisualElement container)
-    {
-      var header = new Label("Process Settings")
-      {
-        style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 8 }
-      };
-      container.Add(header);
-
-      // Two-column layout
-      var row = new VisualElement();
-      row.style.flexDirection = FlexDirection.Row;
-      container.Add(row);
-
-      // LEFT: Settings
-      var leftPanel = new VisualElement();
-      leftPanel.style.flexGrow = 1;
-      leftPanel.style.flexDirection = FlexDirection.Column;
-      leftPanel.style.borderRightWidth = 1;
-      leftPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
-      leftPanel.style.paddingRight = 4;
-
-      // Kill Nvim on Quit
-      var killToggle = new Toggle("Kill Nvim on Quit")
-      {
-        tooltip = "When enabled, nvim server is killed when Unity closes. Default: off (preserves session across restarts).",
-        value = NeovimCodeEditor.s_Config.KillNvimOnQuit
-      };
-      killToggle.RegisterValueChangedCallback(e =>
-      {
-        NeovimCodeEditor.s_Config.KillNvimOnQuit = e.newValue;
-        NeovimCodeEditor.s_Config.Save();
-      });
-      leftPanel.Add(killToggle);
-
-      leftPanel.Add(new VisualElement { style = { height = 10 } });
-
-      // Process Timeout
-      var timeoutLabel = new Label("Process Timeout (milliseconds)")
-      {
-        style = { unityFontStyleAndWeight = FontStyle.Bold }
-      };
-      leftPanel.Add(timeoutLabel);
-
-      var timeoutField = new IntegerField
-      {
-        label = "Timeout",
-        tooltip = "Process timeout after which the process is killed. Used for open-file, jump-to-cursor, and focus-on-neovim processes.",
-        value = NeovimCodeEditor.s_Config.ProcessTimeout
-      };
-      leftPanel.Add(timeoutField);
-
-      var timeoutError = new Label { style = { color = Color.red, display = DisplayStyle.None } };
-      leftPanel.Add(timeoutError);
-
-      var updateTimeoutBtn = new Button(() =>
-      {
-        if (timeoutField.value <= 0)
-        {
-          timeoutError.text = "[ERROR] Cannot set timeout <= 0 (infinite timeout will freeze Unity Editor)";
-          timeoutError.style.display = DisplayStyle.Flex;
-          timeoutField.value = NeovimCodeEditor.s_Config.ProcessTimeout;
-          return;
-        }
-
-        if (timeoutField.value > 1000)
-        {
-          timeoutError.text = "[ERROR] Cannot set timeout > 1000ms (will freeze Unity Editor)";
-          timeoutError.style.display = DisplayStyle.Flex;
-          timeoutField.value = NeovimCodeEditor.s_Config.ProcessTimeout;
-          return;
-        }
-
-        NeovimCodeEditor.s_Config.ProcessTimeout = timeoutField.value;
-        NeovimCodeEditor.s_Config.Save();
-        timeoutError.style.display = DisplayStyle.None;
-      })
-      { text = "Update" };
-      updateTimeoutBtn.style.marginTop = 5;
-      updateTimeoutBtn.style.marginLeft = 4;
-      leftPanel.Add(updateTimeoutBtn);
-
-      // RIGHT: Info panel
-      var rightPanel = new VisualElement();
-      rightPanel.style.width = 240;
-      rightPanel.style.flexShrink = 0;
-      rightPanel.style.flexDirection = FlexDirection.Column;
-      rightPanel.style.paddingLeft = 8;
-
-      var placeholderTitle = new Label("Timeout");
-      placeholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      placeholderTitle.style.marginBottom = 4;
-      rightPanel.Add(placeholderTitle);
-
-      var placeholderInfo = new Label(
-        "Smaller values result in smoother experience at the cost of potential process being killed before completion.\n\n"
-        + "Range: 1-1000ms");
-      placeholderInfo.style.whiteSpace = WhiteSpace.Normal;
-      placeholderInfo.style.flexWrap = Wrap.Wrap;
-      placeholderInfo.style.fontSize = 10;
-      rightPanel.Add(placeholderInfo);
-
-      row.Add(leftPanel);
-      row.Add(rightPanel);
-    }
-
-    private void CreateTerminalSection(VisualElement container)
-    {
-      // Header
-      var header = new Label("Terminal Launch Command")
-      {
-        style = { unityFontStyleAndWeight = FontStyle.Bold, marginBottom = 8 }
-      };
-      container.Add(header);
-
-      // Two-column layout
-      var row = new VisualElement();
-      row.style.flexDirection = FlexDirection.Row;
-      container.Add(row);
-
-      // LEFT: Input fields
-      var leftPanel = new VisualElement();
-      leftPanel.style.flexGrow = 1;
-      leftPanel.style.flexDirection = FlexDirection.Column;
-      leftPanel.style.borderRightWidth = 1;
-      leftPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
-      leftPanel.style.paddingRight = 4;
-
-      // Description
-      var desc = new Label("Configure the terminal emulator used when opening a file for the first time.");
-      desc.style.whiteSpace = WhiteSpace.Normal;
-      desc.style.fontSize = 10;
-      desc.style.marginBottom = 6;
-      leftPanel.Add(desc);
-
-      // Template dropdown
-      var templateNames = NeovimCodeEditor.s_TermLaunchCmds
-        .Select((t, _) => t.Item1)
-        .Append("Custom")
-        .ToList();
-      var templateDropdown = new DropdownField("Template", templateNames, 0);
-      templateDropdown.SetValueWithoutNotify("Select template...");
-      templateDropdown.style.marginTop = 5;
-      leftPanel.Add(templateDropdown);
-
-      // Command field
-      var cmdField = new TextField
-      {
-        label = "Command",
-        tooltip = "Executable that will be executed when opening a file for the first time. Must be accessible via PATH.",
-        value = NeovimCodeEditor.s_Config.TermLaunchCmd ?? ""
-      };
-      leftPanel.Add(cmdField);
-
-      // Arguments field
-      var argsField = new TextField
-      {
-        label = "Arguments",
-        tooltip = "Arguments passed to the executable. Use {app}, {filePath}, {serverSocket}, {instanceId} as placeholders.",
-        value = NeovimCodeEditor.s_Config.TermLaunchArgs ?? ""
-      };
-      leftPanel.Add(argsField);
-
-      // Environment field
-      var envField = new TextField
-      {
-        label = "Environment Variables",
-        tooltip = "Space-separated list: ENV_0=VALUE_0 ENV_1=VALUE_1",
-        value = NeovimCodeEditor.s_Config.TermLaunchEnv ?? ""
-      };
-      leftPanel.Add(envField);
-
-      // Status message
-      var statusLabel = new Label { style = { color = Color.green, marginTop = 5, marginLeft = 4 } };
-      leftPanel.Add(statusLabel);
-
-      // Update button
-      var updateBtn = new Button(() =>
-      {
-        if (!NeovimCodeEditor.TryChangeTermLaunchCmd((cmdField.value, argsField.value, envField.value)))
-        {
-          statusLabel.text = "[ERROR] Terminal not available. Check if command exists in PATH.";
-          statusLabel.style.color = Color.red;
-        }
-        else
-        {
-          statusLabel.text = "[INFO] Terminal launch command updated successfully.";
-          statusLabel.style.color = Color.green;
-        }
-      })
-      { text = "Update" };
-      updateBtn.style.marginTop = 5;
-      updateBtn.style.marginLeft = 4;
-      leftPanel.Add(updateBtn);
-
-      // Template dropdown callback
-      templateDropdown.RegisterValueChangedCallback(e =>
-      {
-        if (e.newValue == "Custom") return;
-        var template = NeovimCodeEditor.s_TermLaunchCmds.First(t => t.Item1 == e.newValue);
-        cmdField.value = template.Item1;
-        argsField.value = template.Item2;
-        envField.value = template.Item3;
-      });
-
-      // RIGHT: Info panel
-      var rightPanel = new VisualElement();
-      rightPanel.style.width = 240;
-      rightPanel.style.flexShrink = 0;
-      rightPanel.style.flexDirection = FlexDirection.Column;
-      rightPanel.style.paddingLeft = 8;
-
-      var placeholderTitle = new Label("Placeholders");
-      placeholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      placeholderTitle.style.marginBottom = 4;
-      rightPanel.Add(placeholderTitle);
-
-      var placeholderInfo = new Label(
-        "{app} — Neovim executable path.\n\n"
-        + "{filePath} — Path to file being opened.\n\n"
-        + "{serverSocket} — Socket for Neovim server communication.\n\n"
-        + "{instanceId} — Unity process ID.\n\n"
-#if UNITY_EDITOR_WIN
-        + "{getProcessPPIDScriptPath} — Path to GetProcessPPID.ps1 for window focusing.\n\n"
-#endif
-        + "{environment} — Environment variables from the field above.");
-      placeholderInfo.style.whiteSpace = WhiteSpace.Normal;
-      placeholderInfo.style.flexWrap = Wrap.Wrap;
-      placeholderInfo.style.fontSize = 10;
-      rightPanel.Add(placeholderInfo);
-
-      row.Add(leftPanel);
-      row.Add(rightPanel);
-    }
-
-    private void CreateFileOpeningSection(VisualElement container)
-    {
-      // Deep-copy bindings so we don't mutate config until user clicks Apply
-      m_Bindings = NeovimCodeEditor.s_Config.ModifierBindings
-        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
+      s_JumpToCursorPosTemplateNames = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
+        .Select(t => t.Name)
+        .Append(k_CustomLabel)
         .ToList();
 
-      // ── SECTION 1: File clicking ──────────────────────────────────────────
-      var section1 = new VisualElement();
-      section1.style.flexDirection = FlexDirection.Column;
-      container.Add(section1);
+      s_TermLaunchCmdTemplateNames = NeovimCodeEditor.s_TermLaunchCmds
+        .Select(cmds => cmds.Item1)
+        .Append(k_CustomLabel)
+        .ToList();
 
-      var section1Title = new Label("File clicking");
-      section1Title.style.unityFontStyleAndWeight = FontStyle.Bold;
-      section1Title.style.marginBottom = 8;
-      section1.Add(section1Title);
+      s_MainWindowVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/settings_window.uxml");
+      s_DefaultModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/default_modifier_binding.uxml");
+      s_ModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/modifier_binding.uxml");
+    }
 
-      var section1Row = new VisualElement();
-      section1Row.style.flexDirection = FlexDirection.Row;
-      section1.Add(section1Row);
+    // MenuItem Creates a menu item and invokes the static function that follows it when the menu item is selected.
+    [MenuItem("Neovim/Settings")]
+    public static void ShowWindow()
+    {
+      var window = GetWindow<NeovimSettingsWindow>(true, "Neovim Settings");
+      window.position = new Rect(Screen.width / 2, Screen.height / 2, 1200, 550);
+      window.minSize = new Vector2(800, 300);
+      window.saveChangesMessage = "This window has unsaved changes. Would you like to save?";
+      window.ShowModalUtility();
+    }
 
-      // LEFT: Modifier Bindings
-      var bindingsPanel = new VisualElement();
-      bindingsPanel.style.flexGrow = 1;
-      bindingsPanel.style.flexDirection = FlexDirection.Column;
-      bindingsPanel.style.borderRightWidth = 1;
-      bindingsPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
-      bindingsPanel.style.paddingRight = 4;
+    public override void SaveChanges()
+    {
+      Save();
+      base.SaveChanges();
+    }
 
-      var bindingsDesc = new Label("Configure how Neovim opens files when clicked in Unity, per modifier key:");
-      bindingsDesc.style.whiteSpace = WhiteSpace.Normal;
-      bindingsDesc.style.marginBottom = 6;
-      bindingsDesc.style.marginLeft = 4;
-      bindingsDesc.style.fontSize = 10;
-      bindingsPanel.Add(bindingsDesc);
+    public override void DiscardChanges()
+    {
+      base.DiscardChanges();
+    }
 
-      var scrollView = new ScrollView(ScrollViewMode.Vertical);
-      scrollView.style.flexGrow = 1;
-      scrollView.style.minHeight = 120;
+    private void SetDirty(bool val)
+    {
+      hasUnsavedChanges = val;
+      m_Dirty = val;
+      if (m_ApplyBtn != null)
+        m_ApplyBtn.SetEnabled(val);
+    }
 
-      m_BindingRows = new VisualElement();
-      m_BindingRows.style.flexDirection = FlexDirection.Column;
-      scrollView.Add(m_BindingRows);
-      bindingsPanel.Add(scrollView);
+    // CreateGUI is called when the EditorWindow's rootVisualElement is ready to be populated.
+    private void CreateGUI()
+    {
+      var root = rootVisualElement;
+      root.style.flexGrow = 1;
+      root.style.flexShrink = 1;
 
-      RebuildBindingRows();
+      VisualElement mainPanel = s_MainWindowVT.Instantiate();
 
-      var toolbar = new VisualElement();
-      toolbar.style.flexDirection = FlexDirection.Row;
-      toolbar.style.justifyContent = Justify.SpaceBetween;
-      toolbar.style.marginTop = 6;
-      toolbar.style.marginBottom = 4;
-      toolbar.style.marginLeft = 4;
-      toolbar.style.marginRight = 4;
+      // toolbar buttons
+      m_ApplyBtn = mainPanel.Q<Button>("apply");
+      m_ResetBtn = mainPanel.Q<Button>("reset");
+      m_AddBindingModifierBtn = mainPanel.Q<Button>("add-binding");
+      m_ApplyBtn.clicked += OnApplyClick;
+      m_ResetBtn.clicked += OnResetClick;
+      m_AddBindingModifierBtn.clicked += OnAddModifierBindingClick;
 
-      var addBtn = new Button(() =>
+      // nvim executable path args
       {
-        m_Bindings.Add(new ModifierBinding { Modifiers = (int)EventModifiers.Shift, Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args });
-        RebuildBindingRows();
-      })
-      { text = "+ Add binding" };
+        m_NvimExecutablePathTf = mainPanel.Q<TextField>("nvim-exec-path-tf");
+        m_NvimExecutablePathTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
+        m_NvimExecutablePathTf.RegisterValueChangedCallback(e =>
+        {
+          if (e.newValue == NeovimCodeEditor.s_Config.NvimExecutablePath)
+            return;
+          SetDirty(true);
+        });
+      }
 
-      var applyBtn = new Button(() =>
+      // terminal launch cmd args
       {
-        NeovimCodeEditor.s_Config.ModifierBindings = m_Bindings
-          .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args })
+        var termLaunchDf = mainPanel.Q<DropdownField>("terminal-launch-templates-dd");
+        m_TermLaunchCmdTf = mainPanel.Q<TextField>("terminal-launch-cmd-tf");
+        m_TermLaunchArgsTf = mainPanel.Q<TextField>("terminal-launch-args-tf");
+        m_TermLaunchEnvTf = mainPanel.Q<TextField>("terminal-launch-env-tf");
+        termLaunchDf.choices = s_TermLaunchCmdTemplateNames;
+        termLaunchDf.SetValueWithoutNotify("select template");
+        m_TermLaunchCmdTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchCmd);
+        m_TermLaunchArgsTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchArgs);
+        m_TermLaunchEnvTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchEnv);
+
+        termLaunchDf.RegisterValueChangedCallback(e => {
+          if (e.newValue == k_CustomLabel)
+          {
+            return;
+          }
+          var template = NeovimCodeEditor.s_TermLaunchCmds
+            .FirstOrDefault(t => t.Item1 == e.newValue);
+          if (template.Item1 == null) return;
+          m_TermLaunchCmdTf.value = template.Item1;
+          m_TermLaunchArgsTf.value = template.Item2;
+        });
+
+        m_TermLaunchCmdTf.RegisterValueChangedCallback(e => {
+          var templateName = NeovimCodeEditor.s_TermLaunchCmds
+            .FirstOrDefault(t => (t.Item1 == e.newValue) && (t.Item2 == m_TermLaunchArgsTf.value)).Item1 ?? k_CustomLabel;
+          termLaunchDf.SetValueWithoutNotify(templateName);
+          if (e.newValue == NeovimCodeEditor.s_Config.TermLaunchCmd)
+            return;
+          SetDirty(true);
+        });
+
+        m_TermLaunchArgsTf.RegisterValueChangedCallback(e => {
+          var templateName = NeovimCodeEditor.s_TermLaunchCmds
+            .FirstOrDefault(t => (t.Item2 == e.newValue) && (t.Item1 == m_TermLaunchCmdTf.value)).Item1 ?? k_CustomLabel;
+          termLaunchDf.SetValueWithoutNotify(templateName);
+          if (e.newValue == NeovimCodeEditor.s_Config.TermLaunchArgs)
+            return;
+          SetDirty(true);
+        });
+
+        m_TermLaunchEnvTf.RegisterValueChangedCallback(e => {
+          if (e.newValue == NeovimCodeEditor.s_Config.TermLaunchEnv)
+            return;
+          SetDirty(true);
+        });
+      }
+
+      // jumo-to-cursor-position
+      {
+        string currArgs = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs;
+        string currentTemplateName = GetJumpToCursorPosTemplateName(currArgs);
+        var templatesDd = mainPanel.Q<DropdownField>("jump-to-cursor-pos-templates");
+        templatesDd.choices = s_JumpToCursorPosTemplateNames;
+        templatesDd.SetValueWithoutNotify(currentTemplateName);
+        m_JumpToCursorPosArgsTf = mainPanel.Q<TextField>("jump-to-cursor-pos-args-tf");
+        m_JumpToCursorPosArgsTf.SetValueWithoutNotify(currArgs);
+
+        m_JumpToCursorPosArgsTf.RegisterValueChangedCallback(e => {
+          string templateName = GetJumpToCursorPosTemplateName(e.newValue);
+          templatesDd.SetValueWithoutNotify(templateName);
+          if (e.newValue == NeovimCodeEditor.s_Config.JumpToCursorPositionArgs)
+            return;
+          SetDirty(true);
+        });
+
+        templatesDd.RegisterValueChangedCallback(e =>
+        {
+          if (e.newValue == k_CustomLabel)
+          {
+            SetInfoPanel(null);
+            return;
+          }
+          var template = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
+            .FirstOrDefault(t => t.Name == e.newValue);
+          if (template.Name == null) return;
+          m_JumpToCursorPosArgsTf.value = template.Args;
+          SetInfoPanel(template);
+        });
+      }
+
+      // open-file request args
+      {
+        // deep-copy bindings so we don't mutate config until user clicks Update
+        m_ModifierBindings = NeovimCodeEditor.s_Config.ModifierBindings
+          .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args, Representation = b.Representation })
           .ToList();
-        NeovimCodeEditor.s_Config.Save();
-      })
-      { text = "Apply" };
+        m_ModifierBindingRows = mainPanel.Q<VisualElement>("modifier-binding-rows");
+        RebuildModifierBindingRows();
+      }
 
-      toolbar.Add(addBtn);
-      toolbar.Add(applyBtn);
-      bindingsPanel.Add(toolbar);
-
-      // RIGHT: Info
-      var infoPanel = new VisualElement();
-      infoPanel.style.width = 240;
-      infoPanel.style.flexShrink = 0;
-      infoPanel.style.flexDirection = FlexDirection.Column;
-      infoPanel.style.paddingLeft = 8;
-
-      m_InfoName = new Label();
-      m_InfoName.style.unityFontStyleAndWeight = FontStyle.Bold;
-      m_InfoName.style.marginBottom = 4;
-      m_InfoName.style.whiteSpace = WhiteSpace.Normal;
-      infoPanel.Add(m_InfoName);
-
-      m_InfoDesc = new Label();
-      m_InfoDesc.style.whiteSpace = WhiteSpace.Normal;
-      m_InfoDesc.style.flexWrap = Wrap.Wrap;
-      m_InfoDesc.style.fontSize = 10;
-      infoPanel.Add(m_InfoDesc);
-
-      SetInfoPanel(null);
-
-      var placeholderTitle = new Label("Placeholders");
-      placeholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      placeholderTitle.style.marginBottom = 4;
-      placeholderTitle.style.marginTop = 12;
-      infoPanel.Add(placeholderTitle);
-
-      var placeholderInfo = new Label(
-        "{filePath} — path to the file being opened.\n\n"
-        + "{serverSocket} — socket used to communicate with the Neovim server (Unix domain socket on Linux, TCP address on Windows).");
-      placeholderInfo.style.whiteSpace = WhiteSpace.Normal;
-      placeholderInfo.style.flexWrap = Wrap.Wrap;
-      placeholderInfo.style.fontSize = 10;
-      infoPanel.Add(placeholderInfo);
-
-      section1Row.Add(bindingsPanel);
-      section1Row.Add(infoPanel);
-
-      // ── Separator between sections ───────────────────────────────────────
-      var sectionSeparator = new VisualElement();
-      sectionSeparator.style.borderTopWidth = 1;
-      sectionSeparator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
-      sectionSeparator.style.marginTop = 16;
-      sectionSeparator.style.marginBottom = 16;
-      container.Add(sectionSeparator);
-
-      // ── SECTION 2: Console item clicking ───────────────────────────────────
-      var section2 = new VisualElement();
-      section2.style.flexDirection = FlexDirection.Column;
-      container.Add(section2);
-
-      var section2Title = new Label("Console item clicking");
-      section2Title.style.unityFontStyleAndWeight = FontStyle.Bold;
-      section2Title.style.marginBottom = 8;
-      section2.Add(section2Title);
-
-      var section2Row = new VisualElement();
-      section2Row.style.flexDirection = FlexDirection.Row;
-      section2.Add(section2Row);
-
-      // LEFT: Jump args field
-      var jumpPanel = new VisualElement();
-      jumpPanel.style.flexGrow = 1;
-      jumpPanel.style.flexDirection = FlexDirection.Column;
-      jumpPanel.style.borderRightWidth = 1;
-      jumpPanel.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
-      jumpPanel.style.paddingRight = 4;
-
-      var jumpDesc = new Label("Used when double-clicking Console errors/warnings to jump to exact line/column in Neovim.");
-      jumpDesc.style.whiteSpace = WhiteSpace.Normal;
-      jumpDesc.style.fontSize = 10;
-      jumpDesc.style.marginLeft = 4;
-      jumpDesc.style.marginBottom = 6;
-      jumpPanel.Add(jumpDesc);
-
-      var jumpField = new TextField
+      // process timeout arg
       {
-        label = "Arguments",
-        tooltip = "Arguments when jumping to a specific line/column in Neovim.",
-        value = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs
-      };
-      jumpPanel.Add(jumpField);
+        m_ProcessTimeoutIf = mainPanel.Q<IntegerField>("process-timeout-if");
+        m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.ProcessTimeout);
+        m_ProcessTimeoutIf.RegisterValueChangedCallback(e => {
+          if (e.newValue == NeovimCodeEditor.s_Config.ProcessTimeout)
+            return;
+          SetDirty(true);
+        });
+      }
 
-      var updateJumpBtn = new Button(() =>
+      // info panel (right panel)
       {
-        NeovimCodeEditor.s_Config.JumpToCursorPositionArgs = jumpField.value;
-        NeovimCodeEditor.s_Config.Save();
-      })
-      { text = "Update" };
-      updateJumpBtn.style.marginTop = 5;
-      updateJumpBtn.style.marginLeft = 4;
-      jumpPanel.Add(updateJumpBtn);
+        m_InfoName = mainPanel.Q<Label>("curr-template-name");
+        m_InfoDesc = mainPanel.Q<Label>("curr-template-desc");
+        m_AppPlaceholderTf = mainPanel.Q<TextField>("app-placeholder-tf");
+        m_ServerSocketTf = mainPanel.Q<TextField>("serversocket-placeholder-tf");
+        m_InstanceIdTf = mainPanel.Q<TextField>("instanceid-placeholder-tf");
+#if UNITY_EDITOR_WIN
+        m_ProcessPIDPlaceholderTf = mainPanel.Q<TextField>("processpid-placeholder-tf");
+        m_ProcessPIDPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_GetProcessPPIDPath);
+#else
+        mainPanel.Q<VisualElement>("processpid-placeholder").Remove();
+#endif
+        m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
+        m_ServerSocketTf.SetValueWithoutNotify(NeovimCodeEditor.ServerSocket);
+        m_InstanceIdTf.SetValueWithoutNotify(NeovimCodeEditor.s_InstanceId);
+      }
 
-      // RIGHT: Info (Placeholders)
-      var jumpInfoPanel = new VisualElement();
-      jumpInfoPanel.style.width = 240;
-      jumpInfoPanel.style.flexShrink = 0;
-      jumpInfoPanel.style.flexDirection = FlexDirection.Column;
-      jumpInfoPanel.style.paddingLeft = 8;
-
-      var jumpPlaceholderTitle = new Label("Placeholders");
-      jumpPlaceholderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-      jumpPlaceholderTitle.style.marginBottom = 4;
-      jumpInfoPanel.Add(jumpPlaceholderTitle);
-
-      var jumpPlaceholderInfo = new Label(
-        "{serverSocket} — socket used to communicate with the Neovim server (Unix domain socket on Linux, TCP address on Windows).\n\n"
-        + "{line} — line number to jump to.\n\n"
-        + "{column} — column number to jump to.");
-      jumpPlaceholderInfo.style.whiteSpace = WhiteSpace.Normal;
-      jumpPlaceholderInfo.style.flexWrap = Wrap.Wrap;
-      jumpPlaceholderInfo.style.fontSize = 10;
-      jumpInfoPanel.Add(jumpPlaceholderInfo);
-
-      section2Row.Add(jumpPanel);
-      section2Row.Add(jumpInfoPanel);
+      root.Add(mainPanel);
+      SetDirty(false);
     }
 
-    private void RebuildBindingRows()
+    private void Save()
     {
-      m_BindingRows.Clear();
+      // update nvim executable path
+      m_NvimExecutablePathTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath = m_NvimExecutablePathTf.value);
+      m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
 
-      for (int i = 0; i < m_Bindings.Count; i++)
+      // update terminal launch cmd shit
+      if (!NeovimCodeEditor.TryChangeTermLaunchCmd(m_TermLaunchCmdTf.value, m_TermLaunchArgsTf.value, m_TermLaunchEnvTf.value))
+      {
+        // TODO: show popup and change border to red
+      }
+
+      // update open-file request modifier bindings args
+      NeovimCodeEditor.s_Config.ModifierBindings = m_ModifierBindings
+        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args, Representation = b.Representation })
+        .ToList();
+
+      // update jumo-to-cursor-position args
+      m_JumpToCursorPosArgsTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.JumpToCursorPositionArgs = m_JumpToCursorPosArgsTf.value);
+
+      // update process timeout
+      m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.ProcessTimeout = m_ProcessTimeoutIf.value);
+
+      // serialize the config shit
+      NeovimCodeEditor.s_Config.Save();
+
+      SetDirty(false);
+    }
+
+    private void OnApplyClick()
+    {
+      if (!m_ApplyBtn.enabledSelf) return;
+      Save();
+    }
+
+    private void OnAddModifierBindingClick()
+    {
+      // check if button is already disabled
+      if (!m_AddBindingModifierBtn.enabledSelf) return;
+      int nextAvailableModifier = GetNextAvailableModifier(out string representation);
+      if (nextAvailableModifier == -1) {
+        return;
+      }
+      m_ModifierBindings.Add(new ModifierBinding {
+          Modifiers = nextAvailableModifier,
+          Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args,
+          Representation = representation });
+      SetDirty(true);
+      RebuildModifierBindingRows();
+    }
+
+    private void OnResetClick()
+    {
+      NeovimCodeEditor.ResetConfig();
+      SetDirty(false);
+      Close();
+      ShowWindow();
+    }
+
+    private static string GetJumpToCursorPosTemplateName(string args)
+    {
+      var match = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
+        .FirstOrDefault(t => t.Args == args);
+      return match.Name ?? k_CustomLabel;
+    }
+
+    private static string GetOpenFileArgsTemplateName(string args)
+    {
+      var match = NeovimCodeEditor.s_OpenFileArgsTemplates
+        .FirstOrDefault(t => t.Args == args);
+      return match.Name ?? k_CustomLabel;
+    }
+
+    private Label CreateLabel(string text, int margin = 5)
+    {
+      var l = new Label(text);
+      l.style.whiteSpace = WhiteSpace.Normal;
+      l.style.unityFontStyleAndWeight = FontStyle.Bold;
+      l.style.marginTop = margin;
+      l.style.marginBottom = margin;
+      l.style.marginLeft = margin;
+      l.style.marginRight = margin;
+      return l;
+    }
+
+    private void SetInfoPanel((string Args, string Name, string Desc)? template)
+    {
+      if (template == null)
+      {
+        m_InfoName.text = "No template is currently selected";
+        m_InfoDesc.text = "Select a template to see its description.";
+      }
+      else
+      {
+        m_InfoName.text = template.Value.Name;
+        m_InfoDesc.text = template.Value.Desc;
+      }
+    }
+    
+    private void RebuildModifierBindingRows()
+    {
+      m_ModifierBindingRows.Clear();
+      for (int i = 0; i < m_ModifierBindings.Count; i++)
       {
         int idx = i; // capture for closure
-        var binding = m_Bindings[i];
+        var binding = m_ModifierBindings[i];
         bool isDefault = binding.Modifiers == 0;
-
-        var row = new VisualElement();
-        row.style.flexDirection = FlexDirection.Column;
-        row.style.marginBottom = 6;
-        row.style.marginLeft = 4;
-        row.style.borderBottomWidth = 1;
-        row.style.borderBottomColor = new Color(0.25f, 0.25f, 0.25f);
-        row.style.paddingBottom = 4;
-
-        // Row header: modifier toggles (skip for default) + delete button
-        var headerRow = new VisualElement();
-        headerRow.style.flexDirection = FlexDirection.Row;
-        headerRow.style.alignItems = Align.Center;
+        VisualElement row;
 
         if (isDefault)
         {
-          var defaultLabel = new Label("Default (no modifier)");
-          defaultLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-          defaultLabel.style.flexGrow = 1;
-          headerRow.Add(defaultLabel);
+          row = s_DefaultModifierBindingVT.Instantiate();
         }
         else
         {
-          var modLabel = new Label("Modifiers:");
-          modLabel.style.marginRight = 4;
-          headerRow.Add(modLabel);
+          row = s_ModifierBindingVT.Instantiate();
 
-          var shiftToggle = new Toggle("Shift") { value = (binding.Modifiers & (int)EventModifiers.Shift) != 0 };
-          var ctrlToggle = new Toggle("Ctrl") { value = (binding.Modifiers & (int)EventModifiers.Control) != 0 };
-          var altToggle = new Toggle("Alt") { value = (binding.Modifiers & (int)EventModifiers.Alt) != 0 };
+          var modifierDd = row.Q<DropdownField>("modifiers-dd");
+          var deleteBtn = row.Q<Button>("delete-btn");
 
-          foreach (var toggle in new[] { shiftToggle, ctrlToggle, altToggle })
-          {
-            toggle.style.marginRight = 2;
-          }
+          var _modifiers = s_OpenFileModifiers.Keys.ToList();
+          modifierDd.choices = _modifiers;
+          modifierDd.SetValueWithoutNotify(binding.Representation);
 
-          System.Action updateMods = () =>
-          {
-            int mods = 0;
-            if (shiftToggle.value) mods |= (int)EventModifiers.Shift;
-            if (ctrlToggle.value) mods |= (int)EventModifiers.Control;
-            if (altToggle.value) mods |= (int)EventModifiers.Alt;
-            m_Bindings[idx].Modifiers = mods;
+          modifierDd.RegisterValueChangedCallback(e => {
+            // check if current modifier is in use
+            int modifier = s_OpenFileModifiers[e.newValue];
+            if (IsModifierInUse(modifier)) {
+              modifierDd.SetValueWithoutNotify(e.previousValue);
+              return;
+            }
+            m_ModifierBindings[idx].Modifiers = modifier;
+            m_ModifierBindings[idx].Representation = e.newValue;
+            SetDirty(true);
+          });
+
+          deleteBtn.clicked += () => {
+            m_ModifierBindings.RemoveAt(idx);
+            RebuildModifierBindingRows();
           };
-
-          shiftToggle.RegisterValueChangedCallback(_ => updateMods());
-          ctrlToggle.RegisterValueChangedCallback(_ => updateMods());
-          altToggle.RegisterValueChangedCallback(_ => updateMods());
-
-          headerRow.Add(shiftToggle);
-          headerRow.Add(ctrlToggle);
-          headerRow.Add(altToggle);
-
-          // spacer
-          var spacer = new VisualElement();
-          spacer.style.flexGrow = 1;
-          headerRow.Add(spacer);
-
-          var deleteBtn = new Button(() =>
-          {
-            m_Bindings.RemoveAt(idx);
-            RebuildBindingRows();
-          })
-          { text = "×" };
-          deleteBtn.style.color = new Color(1f, 0.4f, 0.4f);
-          headerRow.Add(deleteBtn);
         }
 
-        row.Add(headerRow);
+        // template dropdown
+        string currentTemplateName = GetJumpToCursorPosTemplateName(binding.Args);
+        var templateDd = row.Q<DropdownField>("templates-dd");
+        templateDd.choices = s_OpenFileTemplateNames;
+        templateDd.SetValueWithoutNotify(currentTemplateName);
 
-        // Template dropdown
-        string currentTemplateName = GetTemplateName(binding.Args);
-        var templateDd = new DropdownField("Template", m_TemplateNames, m_TemplateNames.IndexOf(currentTemplateName));
-        templateDd.style.marginTop = 4;
+        // args text field
+        var argsField = row.Q<TextField>("args-tf");
+        argsField.SetValueWithoutNotify(binding.Args);
 
-        // Args text field
-        var argsField = new TextField { value = binding.Args };
-        argsField.style.marginTop = 2;
+        // update the info pannel on selection
+        templateDd.RegisterCallback<FocusEvent>(_ => {
+          var template = NeovimCodeEditor.s_OpenFileArgsTemplates
+                      .FirstOrDefault(t => t.Name == templateDd.value);
+          if (template.Name == null) return;
+          SetInfoPanel(template);
+        });
 
         templateDd.RegisterValueChangedCallback(e =>
         {
@@ -602,111 +448,50 @@ namespace Neovim.Editor
           var template = NeovimCodeEditor.s_OpenFileArgsTemplates
             .FirstOrDefault(t => t.Name == e.newValue);
           if (template.Name == null) return;
-          argsField.SetValueWithoutNotify(template.Args);
-          m_Bindings[idx].Args = template.Args;
+          argsField.value = template.Args;
+          m_ModifierBindings[idx].Args = template.Args;
           SetInfoPanel(template);
         });
 
         argsField.RegisterValueChangedCallback(e =>
         {
-          m_Bindings[idx].Args = e.newValue;
+          m_ModifierBindings[idx].Args = e.newValue;
           // if user edited manually, update dropdown to Custom
-          if (GetTemplateName(e.newValue) == k_CustomLabel)
+          if (GetJumpToCursorPosTemplateName(e.newValue) == k_CustomLabel)
             templateDd.SetValueWithoutNotify(k_CustomLabel);
+          SetDirty(true);
         });
 
-        row.Add(templateDd);
-        row.Add(argsField);
-        m_BindingRows.Add(row);
+        m_ModifierBindingRows.Add(row);
+
+      } // END FOR
+
+      // this means all modifier combinations are used
+      m_AddBindingModifierBtn.SetEnabled(m_ModifierBindings.Count < (s_OpenFileModifiers.Count + 1));
+    }
+
+    private bool IsModifierInUse(int modifier) {
+      for (int i = 0; i < m_ModifierBindings.Count; ++i) {
+        if (m_ModifierBindings[i].Modifiers == modifier) {
+          return true;
+        }
       }
+      return false;
     }
 
-    private static string GetTemplateName(string args)
+    private int GetNextAvailableModifier(out string representation)
     {
-      var match = NeovimCodeEditor.s_OpenFileArgsTemplates
-        .FirstOrDefault(t => t.Args == args);
-      return match.Name ?? k_CustomLabel;
-    }
-
-    private void SetInfoPanel((string Args, string Name, string Desc)? template)
-    {
-      if (template == null)
-      {
-        m_InfoName.text = "";
-        m_InfoDesc.text = "You may select a template from each row's dropdown.";
+      representation = null;
+      if (m_ModifierBindings.Count == (s_OpenFileModifiers.Count + 1))
+        return -1;
+      foreach (var kv in s_OpenFileModifiers) {
+        if (!IsModifierInUse(kv.Value)) {
+          representation = kv.Key;
+          return kv.Value;
+        }
       }
-      else
-      {
-        m_InfoName.text = template.Value.Name;
-        m_InfoDesc.text = template.Value.Desc;
-      }
+      return -1;
     }
 
-    private void CreateMaintenanceSection(VisualElement container)
-    {
-      var title = new Label("Server Management")
-      {
-        style = { unityFontStyleAndWeight = FontStyle.Bold, fontSize = 14 }
-      };
-      container.Add(title);
-
-      var helpBox = new HelpBox(
-        "Use these buttons if nvim becomes unresponsive or Unity crashes.",
-        HelpBoxMessageType.Info
-      );
-      helpBox.style.marginTop = 5;
-      container.Add(helpBox);
-
-      container.Add(new VisualElement { style = { height = 15 } });
-
-      // Button row
-      var buttonRow = new VisualElement
-      {
-        style = { flexDirection = FlexDirection.Row }
-      };
-      container.Add(buttonRow);
-
-      var killBtn = new Button(() =>
-      {
-        NeovimCodeEditor.KillOrphanedServer();
-        Debug.Log("[Neovim Settings] Kill Orphaned Server executed.");
-      })
-      { text = "Kill Orphaned Server" };
-      killBtn.style.flexGrow = 1;
-      killBtn.style.marginRight = 5;
-      buttonRow.Add(killBtn);
-
-      var resetBtn = new Button(() =>
-      {
-        NeovimCodeEditor.ResetConfig();
-        Debug.Log("[Neovim Settings] Reset Config executed.");
-      })
-      { text = "Reset Config" };
-      resetBtn.style.flexGrow = 1;
-      buttonRow.Add(resetBtn);
-
-      // Force Reset button
-      var forceResetBtn = new Button(() =>
-      {
-        NeovimCodeEditor.KillOrphanedServer();
-        NeovimCodeEditor.ResetConfig();
-        Debug.Log("[Neovim Settings] Force Reset executed.");
-      })
-      { text = "Force Reset (Kill + Reset)" };
-      forceResetBtn.style.marginTop = 10;
-      container.Add(forceResetBtn);
-
-      // NOTE: Regenerate Project Files removed - already exists in External Tools preferences
-    }
-
-    private void AddSeparator(VisualElement container)
-    {
-      var separator = new VisualElement();
-      separator.style.borderTopWidth = 1;
-      separator.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
-      separator.style.marginTop = 16;
-      separator.style.marginBottom = 16;
-      container.Add(separator);
-    }
   }
 }
