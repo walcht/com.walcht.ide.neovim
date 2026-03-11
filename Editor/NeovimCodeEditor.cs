@@ -49,12 +49,12 @@ namespace Neovim.Editor
     ///   tab, or open in a vertical split, etc.). First entry is the default.
     /// </summary>
     public static readonly (string Args, string Name, string Desc)[] s_OpenFileArgsTemplates = {
-      ("--server {serverSocket} --remote-send \":drop {filePath}<CR>\"",
-       "Open (reuse window)",
-       "Opens in current window. If file is already open somewhere — switches to it. No new tabs."),
       ("--server {serverSocket} --remote-tab {filePath}",
        "Open in new tab",
        "Always opens the file in a new Neovim tab page."),
+      ("--server {serverSocket} --remote-send \":drop {filePath}<CR>\"",
+       "Open (reuse window)",
+       "Opens in current window. If file is already open somewhere — switches to it. No new tabs."),
       ("--server {serverSocket} --remote-send \":vsplit {filePath}<CR>\"",
        "Vertical split",
        "Opens the file in a vertical split of the current window."),
@@ -176,7 +176,6 @@ namespace Neovim.Editor
     /// </summary>
     private static bool SetDefaults()
     {
-
       if (s_DiscoveredNeovimInstallations.Any())
       {
         s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
@@ -523,20 +522,12 @@ namespace Neovim.Editor
     // the code editor.
     public void OnGUI()
     {
-      // ==================== Neovim Settings Button ====================
-      EditorGUILayout.Space();
-      EditorGUILayout.LabelField("Neovim Settings", EditorStyles.boldLabel);
-
+      // internal bug in some Unity versions cause the call NeovimSettingsWindow.ShowWindow() to generate:
+      // "EndLayoutGroup: BeginLayoutGroup must be called first" errors ...
       EditorGUILayout.HelpBox(
-        "Configure all Neovim-specific settings including terminal launch, file opening behavior, and server management.",
+        "Configure all Neovim-specific settings by going to the top menu: Neovim => Settings",
         MessageType.Info
       );
-
-      if (GUILayout.Button("Open Neovim Settings", GUILayout.Height(30)))
-      {
-        NeovimSettingsWindow.ShowWindow();
-      }
-      // ===============================================================
     }
 
 
