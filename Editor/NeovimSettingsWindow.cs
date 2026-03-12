@@ -36,7 +36,7 @@ namespace Neovim.Editor
     private static float s_X = Mathf.FloorToInt(Screen.width * 0.5f - Screen.width * 0.25f);
     private static float s_Y = Mathf.FloorToInt(Screen.height * 0.5f - Screen.height * 0.25f);
     private static float s_Width = Screen.width * 0.5f;
-    private static float s_Height = Screen.height* 0.5f;
+    private static float s_Height = Screen.height * 0.5f;
 
     ////////////////////////////////////////////////////////////////////////////
     // nvim executable path
