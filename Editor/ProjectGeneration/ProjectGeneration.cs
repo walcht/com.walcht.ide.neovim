@@ -76,6 +76,8 @@ namespace Neovim.Editor
       m_ProjectName = Path.GetFileName(ProjectDirectory);
       m_AssemblyNameProvider = assemblyNameProvider;
       m_GUIDGenerator = guidGenerator;
+
+      SetupProjectSupportedExtensions();
     }
 
     /// <summary>
@@ -159,14 +161,7 @@ namespace Neovim.Editor
 
       (m_AssemblyNameProvider as AssemblyNameProvider)?.ResetPackageInfoCache();
 
-      var externalCodeAlreadyGeneratedProjects = OnPreGeneratingCSProjectFiles();
-
-      if (!externalCodeAlreadyGeneratedProjects)
-      {
-        GenerateAndWriteSolutionAndProjects();
-      }
-
-      OnGeneratedCSProjectFiles();
+      GenerateAndWriteSolutionAndProjects();
     }
 
     public bool HasSolutionBeenGenerated()
@@ -371,69 +366,12 @@ namespace Neovim.Editor
 
     private void SyncProjectFileIfNotChanged(string path, string newContents)
     {
-      if (Path.GetExtension(path) == ".csproj")
-      {
-        newContents = OnGeneratedCSProject(path, newContents);
-      }
-
       SyncFileIfNotChanged(path, newContents);
     }
 
     private void SyncSolutionFileIfNotChanged(string path, string newContents)
     {
-      newContents = OnGeneratedSlnSolution(path, newContents);
-
       SyncFileIfNotChanged(path, newContents);
-    }
-
-    static void OnGeneratedCSProjectFiles()
-    {
-      foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(nameof(OnGeneratedCSProjectFiles)))
-      {
-        method.Invoke(null, Array.Empty<object>());
-      }
-    }
-
-    private static bool OnPreGeneratingCSProjectFiles()
-    {
-      bool result = false;
-
-      foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(nameof(OnPreGeneratingCSProjectFiles)))
-      {
-        var retValue = method.Invoke(null, Array.Empty<object>());
-        if (method.ReturnType == typeof(bool))
-        {
-          result |= (bool)retValue;
-        }
-      }
-
-      return result;
-    }
-
-    private static string InvokeAssetPostProcessorGenerationCallbacks(string name, string path, string content)
-    {
-      foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(name))
-      {
-        var args = new[] { path, content };
-        var returnValue = method.Invoke(null, args);
-        if (method.ReturnType == typeof(string))
-        {
-          // We want to chain content update between invocations
-          content = (string)returnValue;
-        }
-      }
-
-      return content;
-    }
-
-    private static string OnGeneratedCSProject(string path, string content)
-    {
-      return InvokeAssetPostProcessorGenerationCallbacks(nameof(OnGeneratedCSProject), path, content);
-    }
-
-    private static string OnGeneratedSlnSolution(string path, string content)
-    {
-      return InvokeAssetPostProcessorGenerationCallbacks(nameof(OnGeneratedSlnSolution), path, content);
     }
 
     private void SyncFileIfNotChanged(string filename, string newContents)
@@ -561,7 +499,7 @@ namespace Neovim.Editor
 #if UNITY_EDITOR_WIN
     private static readonly Regex InvalidCharactersRegexPattern = new(@"\?|&|\*|""|<|>|\||#|%|\^|;", RegexOptions.Compiled);
 #else
-		private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;|:", RegexOptions.Compiled);
+    private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;|:", RegexOptions.Compiled);
 #endif
 
     public string SolutionFile()
@@ -916,17 +854,29 @@ namespace Neovim.Editor
       packageInfo = m_AssemblyNameProvider.FindForAssetPath(path.NormalizeWindowsToUnix());
       if (packageInfo != null)
       {
-        // Use packageInfo.resolvedPath to get the real filesystem path (e.g. Library/PackageCache/com.unity.ugui@hash/).
-        // Path.GetFullPath() does not resolve Unity's virtual "Packages/<name>" paths on Linux — it just prepends CWD,
-        // returning the same virtual path as absolute. resolvedPath gives the actual on-disk location.
-        var suffix = SkipPathPrefix(path.NormalizeWindowsToUnix(), packageInfo.assetPath.NormalizeWindowsToUnix());
+        // use packageInfo.resolvedPath to get the real filesystem path (e.g. Library/PackageCache/com.unity.ugui@hash/).
+        // packageInfo.assetPath is the virtual asset path that Unity understands (i.e., Unity then resolves using
+        // packageInfo.resolvedPath)
+        var suffix = SkipPathPrefix(path.NormalizePathSeparators(), packageInfo.assetPath.NormalizePathSeparators());
         var absolutePath = Path.Combine(packageInfo.resolvedPath, suffix).NormalizePathSeparators();
+
+        // we don't want to store the absolute path for assets that exist in project dir. On the other hand, if you
+        // are referencing, say, a disk/tarball asset, then absolute path has to be used.
         path = SkipPathPrefix(absolutePath, projectDir);
       }
 
       return XmlFilename(path);
     }
 
+    /// <summary>
+    /// Skips (removes) prefix from path. Both path and prefix HAVE TO use the same OS-native path seperators and
+    /// prexfix SHOULD NOT end with that path seperator.
+    /// </summary>
+    /// <example>
+    /// path    = "Packages\com.unity.visualscripting\Runtime\VisualScripting.Core\Collections\VariantCollection.cs"
+    /// prefix  = "Packages\com.unity.visualscripting"
+    /// result  = "Runtime\VisualScripting.Core\Collections\VariantCollection.cs"
+    /// </example>
     internal static string SkipPathPrefix(string path, string prefix)
     {
       if (path.StartsWith($"{prefix}{Path.DirectorySeparatorChar}") && (path.Length > prefix.Length))
@@ -959,7 +909,7 @@ namespace Neovim.Editor
 #if UNITY_2020_2_OR_NEWER
       return assembly.rootNamespace;
 #else
-			return EditorSettings.projectGenerationRootNamespace;
+      return EditorSettings.projectGenerationRootNamespace;
 #endif
     }
   }
