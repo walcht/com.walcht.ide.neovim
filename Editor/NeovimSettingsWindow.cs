@@ -33,6 +33,11 @@ namespace Neovim.Editor
     private static readonly VisualTreeAsset s_ModifierBindingVT;
     private static readonly VisualTreeAsset s_AnalyzerEntryVT;
 
+    private static float s_X = Mathf.FloorToInt(Screen.width * 0.5f - Screen.width * 0.25f);
+    private static float s_Y = Mathf.FloorToInt(Screen.height * 0.5f - Screen.height * 0.25f);
+    private static float s_Width = Screen.width * 0.5f;
+    private static float s_Height = Screen.height* 0.5f;
+
     ////////////////////////////////////////////////////////////////////////////
     // nvim executable path
     ////////////////////////////////////////////////////////////////////////////
@@ -112,12 +117,17 @@ namespace Neovim.Editor
     public static void ShowWindow()
     {
       var window = GetWindow<NeovimSettingsWindow>(true, "Neovim Settings");
-      int minWidth = Mathf.FloorToInt(Screen.width * 0.5f);
-      int minHeight = Mathf.FloorToInt(Screen.height * 0.5f);
-      window.position = new Rect(Screen.width / 2 - minWidth / 2.0f, Screen.height / 2 - minHeight / 2.0f, minWidth, minHeight);
-      window.minSize = new Vector2(minWidth, minHeight);
+      // keep this shit in this order - if you set position THEN minSize, position will be reset ...
+      window.minSize = new Vector2(650, 300);
+      window.position = new Rect(s_X, s_Y, s_Width, s_Height);
       window.saveChangesMessage = "This window has unsaved changes. Would you like to save?";
       window.ShowModalUtility();
+
+      // save window position so that you do not have to resize it each time
+      s_X = window.position.x;
+      s_Y = window.position.y;
+      s_Width = window.position.width;
+      s_Height = window.position.height;
     }
 
 
