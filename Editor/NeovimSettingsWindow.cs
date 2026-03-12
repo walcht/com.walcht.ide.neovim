@@ -47,7 +47,7 @@ namespace Neovim.Editor
     // Jump-to-cursor position args
     ////////////////////////////////////////////////////////////////////////////
     private TextField m_JumpToCursorPosArgsTf;
-    private static readonly List<string> s_JumpToCursorPosTemplateNames;
+    private static List<string> s_JumpToCursorPosTemplateNames;
     private static readonly string k_CustomLabel = "Custom";
 
     ////////////////////////////////////////////////////////////////////////////
@@ -65,7 +65,7 @@ namespace Neovim.Editor
     };
     private List<ModifierBinding> m_ModifierBindings;
     private VisualElement m_ModifierBindingRows;
-    private static readonly List<string> s_OpenFileTemplateNames;
+    private static List<string> s_OpenFileTemplateNames;
 
     ////////////////////////////////////////////////////////////////////////////
     // Terminal launch cmd args
@@ -73,7 +73,7 @@ namespace Neovim.Editor
     private TextField m_TermLaunchCmdTf;
     private TextField m_TermLaunchArgsTf;
     private TextField m_TermLaunchEnvTf;
-    private static readonly List<string> s_TermLaunchCmdTemplateNames;
+    private static List<string> s_TermLaunchCmdTemplateNames;
 
     ////////////////////////////////////////////////////////////////////////////
     // Process timeout
@@ -90,21 +90,6 @@ namespace Neovim.Editor
     // TODO: persistent window position
     static NeovimSettingsWindow()
     {
-      s_OpenFileTemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
-        .Select(t => t.Name)
-        .Append(k_CustomLabel)
-        .ToList();
-
-      s_JumpToCursorPosTemplateNames = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
-        .Select(t => t.Name)
-        .Append(k_CustomLabel)
-        .ToList();
-
-      s_TermLaunchCmdTemplateNames = NeovimCodeEditor.s_TermLaunchCmds
-        .Select(cmds => cmds.Item1)
-        .Append(k_CustomLabel)
-        .ToList();
-
       s_MainWindowVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/settings_window.uxml");
       s_DefaultModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/default_modifier_binding.uxml");
       s_ModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/modifier_binding.uxml");
@@ -155,6 +140,21 @@ namespace Neovim.Editor
     // CreateGUI is called when the EditorWindow's rootVisualElement is ready to be populated.
     private void CreateGUI()
     {
+      s_OpenFileTemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
+        .Select(t => t.Name)
+        .Append(k_CustomLabel)
+        .ToList();
+
+      s_JumpToCursorPosTemplateNames = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
+        .Select(t => t.Name)
+        .Append(k_CustomLabel)
+        .ToList();
+
+      s_TermLaunchCmdTemplateNames = NeovimCodeEditor.s_TermLaunchCmds
+        .Select(cmds => cmds.Item1)
+        .Append(k_CustomLabel)
+        .ToList();
+
       var root = rootVisualElement;
 
       VisualElement mainPanel = s_MainWindowVT.Instantiate();
