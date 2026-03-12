@@ -9,7 +9,7 @@ using System.IO;
 
 namespace Neovim.Editor
 {
-  public class NeovimSettingsWindow: EditorWindow
+  public class NeovimSettingsWindow : EditorWindow
   {
     // toolbar
     private Button m_ApplyBtn = null;
@@ -50,14 +50,15 @@ namespace Neovim.Editor
     ////////////////////////////////////////////////////////////////////////////
     // Open-file-request args
     ////////////////////////////////////////////////////////////////////////////
-    private static readonly Dictionary<string, int> s_OpenFileModifiers = new Dictionary<string, int> {
-       ["SHIFT"] = (int)EventModifiers.Shift,
-       ["CTRL"] = (int)EventModifiers.Control,
-       ["ALT"] = (int)EventModifiers.Alt,
-       ["SHIFT+CTRL"] = (int)EventModifiers.Shift | (int)EventModifiers.Control,
-       ["SHIFT+ALT"] = (int)EventModifiers.Shift | (int)EventModifiers.Alt,
-       ["CTRL+ALT"] = (int)EventModifiers.Control | (int)EventModifiers.Alt,
-       ["SHIFT+CTRL+ALT"] = (int)EventModifiers.Shift | (int)EventModifiers.Control | (int)EventModifiers.Alt
+    private static readonly Dictionary<string, int> s_OpenFileModifiers = new Dictionary<string, int>
+    {
+      ["SHIFT"] = (int)EventModifiers.Shift,
+      ["CTRL"] = (int)EventModifiers.Control,
+      ["ALT"] = (int)EventModifiers.Alt,
+      ["SHIFT+CTRL"] = (int)EventModifiers.Shift | (int)EventModifiers.Control,
+      ["SHIFT+ALT"] = (int)EventModifiers.Shift | (int)EventModifiers.Alt,
+      ["CTRL+ALT"] = (int)EventModifiers.Control | (int)EventModifiers.Alt,
+      ["SHIFT+CTRL+ALT"] = (int)EventModifiers.Shift | (int)EventModifiers.Control | (int)EventModifiers.Alt
     };
     private List<ModifierBinding> m_ModifierBindings;
     private VisualElement m_ModifierBindingRows;
@@ -84,7 +85,8 @@ namespace Neovim.Editor
 
 
     // TODO: persistent window position
-    static NeovimSettingsWindow() {
+    static NeovimSettingsWindow()
+    {
       s_OpenFileTemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
         .Select(t => t.Name)
         .Append(k_CustomLabel)
@@ -245,7 +247,8 @@ namespace Neovim.Editor
         m_TermLaunchArgsTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchArgs);
         m_TermLaunchEnvTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchEnv);
 
-        termLaunchDf.RegisterValueChangedCallback(e => {
+        termLaunchDf.RegisterValueChangedCallback(e =>
+        {
           if (e.newValue == k_CustomLabel)
           {
             return;
@@ -257,7 +260,8 @@ namespace Neovim.Editor
           m_TermLaunchArgsTf.value = template.Item2;
         });
 
-        m_TermLaunchCmdTf.RegisterValueChangedCallback(e => {
+        m_TermLaunchCmdTf.RegisterValueChangedCallback(e =>
+        {
           var templateName = NeovimCodeEditor.s_TermLaunchCmds
             .FirstOrDefault(t => (t.Item1 == e.newValue) && (t.Item2 == m_TermLaunchArgsTf.value)).Item1 ?? k_CustomLabel;
           termLaunchDf.SetValueWithoutNotify(templateName);
@@ -266,7 +270,8 @@ namespace Neovim.Editor
           SetDirty(true);
         });
 
-        m_TermLaunchArgsTf.RegisterValueChangedCallback(e => {
+        m_TermLaunchArgsTf.RegisterValueChangedCallback(e =>
+        {
           var templateName = NeovimCodeEditor.s_TermLaunchCmds
             .FirstOrDefault(t => (t.Item2 == e.newValue) && (t.Item1 == m_TermLaunchCmdTf.value)).Item1 ?? k_CustomLabel;
           termLaunchDf.SetValueWithoutNotify(templateName);
@@ -275,7 +280,8 @@ namespace Neovim.Editor
           SetDirty(true);
         });
 
-        m_TermLaunchEnvTf.RegisterValueChangedCallback(e => {
+        m_TermLaunchEnvTf.RegisterValueChangedCallback(e =>
+        {
           if (e.newValue == NeovimCodeEditor.s_Config.TermLaunchEnv)
             return;
           SetDirty(true);
@@ -292,7 +298,8 @@ namespace Neovim.Editor
         m_JumpToCursorPosArgsTf = mainPanel.Q<TextField>("jump-to-cursor-pos-args-tf");
         m_JumpToCursorPosArgsTf.SetValueWithoutNotify(currArgs);
 
-        m_JumpToCursorPosArgsTf.RegisterValueChangedCallback(e => {
+        m_JumpToCursorPosArgsTf.RegisterValueChangedCallback(e =>
+        {
           string templateName = GetJumpToCursorPosTemplateName(e.newValue);
           templatesDd.SetValueWithoutNotify(templateName);
           if (e.newValue == NeovimCodeEditor.s_Config.JumpToCursorPositionArgs)
@@ -329,7 +336,8 @@ namespace Neovim.Editor
       {
         m_ProcessTimeoutIf = mainPanel.Q<IntegerField>("process-timeout-if");
         m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.ProcessTimeout);
-        m_ProcessTimeoutIf.RegisterValueChangedCallback(e => {
+        m_ProcessTimeoutIf.RegisterValueChangedCallback(e =>
+        {
           if (e.newValue == NeovimCodeEditor.s_Config.ProcessTimeout)
             return;
           SetDirty(true);
@@ -343,12 +351,13 @@ namespace Neovim.Editor
         var analyzerPathTf = mainPanel.Q<TextField>("analyzer-path-tf");
         var browseBtn = mainPanel.Q<Button>("browse-analyzer-btn");
         var addBtn = mainPanel.Q<Button>("add-analyzer-btn");
-        
+
         addBtn.SetEnabled(false);
 
         // save color
         var defaultColor = analyzerPathTf.style.color;
-        analyzerPathTf.RegisterValueChangedCallback(e => {
+        analyzerPathTf.RegisterValueChangedCallback(e =>
+        {
           if (File.Exists(e.newValue) && Path.GetExtension(e.newValue) == ".dll")
           {
             addBtn.SetEnabled(true);
@@ -449,13 +458,16 @@ namespace Neovim.Editor
       // check if button is already disabled
       if (!m_AddBindingModifierBtn.enabledSelf) return;
       int nextAvailableModifier = GetNextAvailableModifier(out string representation);
-      if (nextAvailableModifier == -1) {
+      if (nextAvailableModifier == -1)
+      {
         return;
       }
-      m_ModifierBindings.Add(new ModifierBinding {
-          Modifiers = nextAvailableModifier,
-          Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args,
-          Representation = representation });
+      m_ModifierBindings.Add(new ModifierBinding
+      {
+        Modifiers = nextAvailableModifier,
+        Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args,
+        Representation = representation
+      });
       SetDirty(true);
       RebuildModifierBindingRows();
     }
@@ -545,7 +557,7 @@ namespace Neovim.Editor
         m_AnalyzerRows.Add(row);
       }
     }
-    
+
 
     private void RebuildModifierBindingRows()
     {
@@ -572,10 +584,12 @@ namespace Neovim.Editor
           modifierDd.choices = _modifiers;
           modifierDd.SetValueWithoutNotify(binding.Representation);
 
-          modifierDd.RegisterValueChangedCallback(e => {
+          modifierDd.RegisterValueChangedCallback(e =>
+          {
             // check if current modifier is in use
             int modifier = s_OpenFileModifiers[e.newValue];
-            if (IsModifierInUse(modifier)) {
+            if (IsModifierInUse(modifier))
+            {
               modifierDd.SetValueWithoutNotify(e.previousValue);
               return;
             }
@@ -584,7 +598,8 @@ namespace Neovim.Editor
             SetDirty(true);
           });
 
-          deleteBtn.clicked += () => {
+          deleteBtn.clicked += () =>
+          {
             m_ModifierBindings.RemoveAt(idx);
             RebuildModifierBindingRows();
           };
@@ -601,7 +616,8 @@ namespace Neovim.Editor
         argsField.SetValueWithoutNotify(binding.Args);
 
         // update the info pannel on selection
-        templateDd.RegisterCallback<FocusEvent>(_ => {
+        templateDd.RegisterCallback<FocusEvent>(_ =>
+        {
           var template = NeovimCodeEditor.s_OpenFileArgsTemplates
                       .FirstOrDefault(t => t.Name == templateDd.value);
           if (template.Name == null) return;
@@ -640,9 +656,12 @@ namespace Neovim.Editor
       m_AddBindingModifierBtn.SetEnabled(m_ModifierBindings.Count < (s_OpenFileModifiers.Count + 1));
     }
 
-    private bool IsModifierInUse(int modifier) {
-      for (int i = 0; i < m_ModifierBindings.Count; ++i) {
-        if (m_ModifierBindings[i].Modifiers == modifier) {
+    private bool IsModifierInUse(int modifier)
+    {
+      for (int i = 0; i < m_ModifierBindings.Count; ++i)
+      {
+        if (m_ModifierBindings[i].Modifiers == modifier)
+        {
           return true;
         }
       }
@@ -654,8 +673,10 @@ namespace Neovim.Editor
       representation = null;
       if (m_ModifierBindings.Count == (s_OpenFileModifiers.Count + 1))
         return -1;
-      foreach (var kv in s_OpenFileModifiers) {
-        if (!IsModifierInUse(kv.Value)) {
+      foreach (var kv in s_OpenFileModifiers)
+      {
+        if (!IsModifierInUse(kv.Value))
+        {
           representation = kv.Key;
           return kv.Value;
         }

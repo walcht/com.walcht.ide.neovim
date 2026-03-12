@@ -223,7 +223,7 @@ namespace Neovim.Editor
           Debug.LogError($"[neovim.ide] open-file template list is empty");
         }
         s_Config.ModifierBindings = new System.Collections.Generic.List<ModifierBinding> {
-          new ModifierBinding { Modifiers = 0, Args = s_OpenFileArgsTemplates[0].Args }
+          new() { Modifiers = 0, Args = s_OpenFileArgsTemplates[0].Args }
         };
       }
       s_Config.Save();
@@ -241,17 +241,6 @@ namespace Neovim.Editor
       return true;
     }
 
-    public static void InitConfig()
-    {
-      s_Config = NeovimEditorConfig.Load();
-
-      // set some defaults in case they are not already set (launch cmd and args, open-file args, etc.)
-      if (!SetDefaults())
-        return;
-
-      // sync deserialized analyzers with the project generator's analyzers
-      s_Generator.SetAnalyzers(s_Config.Analyzers);
-    }
 
     public static string GetNeovimVersion(string p)
     {
@@ -275,26 +264,28 @@ namespace Neovim.Editor
 
       s_Generator = new SdkStyleProjectGeneration();
 
-      InitConfig();
+      // config initialization
+      s_Config = NeovimEditorConfig.Load();
+      if (!SetDefaults()) return;
+      s_Generator.SetAnalyzers(s_Config.Analyzers, dontSync: true);
 
       // if nvim executable path is already provided and is valid
       {
-        string p = NeovimCodeEditor.s_Config.NvimExecutablePath;
+        string p = s_Config.NvimExecutablePath;
         string v;
         if (!string.IsNullOrWhiteSpace(p) && Path.IsPathRooted(p) && File.Exists(p)
             && (v = GetNeovimVersion(p)) != "v-unknown")
         {
-          s_DiscoveredNeovimInstallations = new CodeEditor.Installation[] { new CodeEditor.Installation
-          {
+          s_DiscoveredNeovimInstallations = new CodeEditor.Installation[] { new() {
             Name = $"Neovim {v}",
-            Path = NeovimCodeEditor.s_Config.NvimExecutablePath
+            Path = s_Config.NvimExecutablePath
           }};
         }
         else
         {
           Debug.LogWarning("[neovim.ide] the provided nvim executable path is no longer valid. Falling back to "
               + "automated nvim installation discovery (consider updating path via top menu: Neovim -> Settings ).");
-          NeovimCodeEditor.s_Config.NvimExecutablePath = null;
+          s_Config.NvimExecutablePath = null;
         }
       }
 
@@ -328,7 +319,7 @@ namespace Neovim.Editor
       }
 
       // we use the first discovered/set nvim installation path
-      NeovimCodeEditor.s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
+      s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
 
 #if UNITY_EDITOR_LINUX
       s_LinuxPlatform = DetermineLinuxDesktopEnvironment();
@@ -485,7 +476,7 @@ namespace Neovim.Editor
       {
         // Debug.Log($"[neovim.ide] added analyzer: {Path.GetFileName(path)}");
         s_Config.Save();
-        s_Generator.Sync();
+        CodeEditor.Editor.CurrentCodeEditor.SyncAll();
         return true;
       }
       return false;
@@ -501,18 +492,20 @@ namespace Neovim.Editor
       s_Generator.Sync();
     }
 
-    private const int EDITOR_GUI_ELEMENT_HEIGHT = 37;
-
-    private Vector2 m_ScrollViewPos;
-
     /// <summary>
     /// Reset the Neovim configuration by deleting the saved EditorPrefs and reinitializing.
     /// Use this when settings become corrupted or you want to start fresh.
     /// </summary>
-    public static void ResetConfig()
+    public static void ResetConfig(bool dontSync = false)
     {
-      EditorPrefs.DeleteKey("NvimUnityConfigJson");
-      InitConfig();
+      s_Config = NeovimEditorConfig.Load();
+
+      // set some defaults in case they are not already set (launch cmd and args, open-file args, etc.)
+      if (!SetDefaults())
+        return;
+
+      // sync deserialized analyzers with the project generator's analyzers
+      s_Generator.SetAnalyzers(s_Config.Analyzers, dontSync);
       // Debug.Log("[neovim.ide] reset the previously saved neovim config");
     }
 

@@ -28,7 +28,7 @@ namespace Neovim.Editor
     bool IsSupportedFile(string path);
     string SolutionFile();
     string ProjectDirectory { get; }
-    void SetAnalyzers(IReadOnlyList<string> analyzerPaths);
+    void SetAnalyzers(IReadOnlyList<string> analyzerPaths, bool dontSync = false);
     IAssemblyNameProvider AssemblyNameProvider { get; }
   }
 
@@ -94,6 +94,7 @@ namespace Neovim.Editor
     /// </param>
     public bool SyncIfNeeded(IEnumerable<string> affectedFiles, IEnumerable<string> reimportedFiles)
     {
+      Debug.Log("SyncIfNeeded");
       using (solutionSyncMarker.Auto())
       {
         SetupProjectSupportedExtensions();
@@ -147,9 +148,11 @@ namespace Neovim.Editor
       return k_ReimportSyncExtensions.Contains(new FileInfo(asset).Extension);
     }
 
-    public void SetAnalyzers(IReadOnlyList<string> analyzerPaths)
+    public void SetAnalyzers(IReadOnlyList<string> analyzerPaths, bool dontSync = false)
     {
       m_CustomAnalyzers = analyzerPaths;
+      if (dontSync)
+        return;
       Sync();
     }
 
@@ -157,6 +160,7 @@ namespace Neovim.Editor
 
     public void Sync()
     {
+      Debug.Log("SyncAll");
       SetupProjectSupportedExtensions();
 
       (m_AssemblyNameProvider as AssemblyNameProvider)?.ResetPackageInfoCache();
