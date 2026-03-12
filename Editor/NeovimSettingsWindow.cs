@@ -1,4 +1,4 @@
-#pragma warning disable IDE0130
+#pragma warning disable IDE0130, IDE0031
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
@@ -33,8 +33,6 @@ namespace Neovim.Editor
     private static readonly VisualTreeAsset s_ModifierBindingVT;
     private static readonly VisualTreeAsset s_AnalyzerEntryVT;
 
-    private bool m_Dirty;
-
     ////////////////////////////////////////////////////////////////////////////
     // nvim executable path
     ////////////////////////////////////////////////////////////////////////////
@@ -50,7 +48,7 @@ namespace Neovim.Editor
     ////////////////////////////////////////////////////////////////////////////
     // Open-file-request args
     ////////////////////////////////////////////////////////////////////////////
-    private static readonly Dictionary<string, int> s_OpenFileModifiers = new Dictionary<string, int>
+    private static readonly Dictionary<string, int> s_OpenFileModifiers = new()
     {
       ["SHIFT"] = (int)EventModifiers.Shift,
       ["CTRL"] = (int)EventModifiers.Control,
@@ -139,7 +137,6 @@ namespace Neovim.Editor
     private void SetDirty(bool val)
     {
       hasUnsavedChanges = val;
-      m_Dirty = val;
       if (m_ApplyBtn != null)
         m_ApplyBtn.SetEnabled(val);
     }
@@ -484,30 +481,9 @@ namespace Neovim.Editor
 
     private static string GetJumpToCursorPosTemplateName(string args)
     {
-      var match = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
+      var (Args, Name, Desc) = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
         .FirstOrDefault(t => t.Args == args);
-      return match.Name ?? k_CustomLabel;
-    }
-
-
-    private static string GetOpenFileArgsTemplateName(string args)
-    {
-      var match = NeovimCodeEditor.s_OpenFileArgsTemplates
-        .FirstOrDefault(t => t.Args == args);
-      return match.Name ?? k_CustomLabel;
-    }
-
-
-    private Label CreateLabel(string text, int margin = 5)
-    {
-      var l = new Label(text);
-      l.style.whiteSpace = WhiteSpace.Normal;
-      l.style.unityFontStyleAndWeight = FontStyle.Bold;
-      l.style.marginTop = margin;
-      l.style.marginBottom = margin;
-      l.style.marginLeft = margin;
-      l.style.marginRight = margin;
-      return l;
+      return Name ?? k_CustomLabel;
     }
 
 
