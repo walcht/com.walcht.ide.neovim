@@ -396,7 +396,7 @@ namespace Neovim.Editor
         m_ProcessPIDPlaceholderTf = mainPanel.Q<TextField>("processpid-placeholder-tf");
         m_ProcessPIDPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_GetProcessPPIDPath);
 #else
-        mainPanel.Q<VisualElement>("processpid-placeholder").Remove();
+        mainPanel.Q<VisualElement>("processpid-placeholder").RemoveFromHierarchy();
 #endif
         m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
         m_ServerSocketTf.SetValueWithoutNotify(NeovimCodeEditor.ServerSocket);

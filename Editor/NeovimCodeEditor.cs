@@ -269,12 +269,12 @@ namespace Neovim.Editor
       if (!SetDefaults()) return;
       s_Generator.SetAnalyzers(s_Config.Analyzers, dontSync: true);
 
-      // if nvim executable path is already provided and is valid
+      // if nvim executable path is already set in the config - check if it is still valid
+      if (!string.IsNullOrWhiteSpace(s_Config.NvimExecutablePath))
       {
-        string p = s_Config.NvimExecutablePath;
         string v;
-        if (!string.IsNullOrWhiteSpace(p) && Path.IsPathRooted(p) && File.Exists(p)
-            && (v = GetNeovimVersion(p)) != "v-unknown")
+        if (File.Exists(s_Config.NvimExecutablePath)
+            && (v = GetNeovimVersion(s_Config.NvimExecutablePath)) != "v-unknown")
         {
           s_DiscoveredNeovimInstallations = new CodeEditor.Installation[] { new() {
             Name = $"Neovim {v}",
@@ -343,35 +343,41 @@ namespace Neovim.Editor
         using var p = ProcessUtils.HeadlessProcess();
         p.StartInfo.FileName = "gnome-extensions";
         p.StartInfo.Arguments = "list";
-        p.RunWithAssertion(s_Config.ProcessTimeout);
+        p.RunWithAssertion(10_000);
         const string uuid = "activate-window-by-title@lucaswerkmeister.de";
         var foundExtension = false;
-        while (true)
+        string line;
+        while ((line = p.StandardOutput.ReadLine()) != null)
         {
-          var line = p.StandardOutput.ReadLine();
-          if (line == null) break;
           if (line.Contains(uuid))
           {
             foundExtension = true;
+            s_WindowFocusingAvailable = true;
             break;
           }
         }
-        using var p2 = ProcessUtils.HeadlessProcess();
-        p2.StartInfo.FileName = "busctl";
-        p2.StartInfo.Arguments = $"--user call org.gnome.Shell.Extensions /org/gnome/Shell/Extensions org.gnome.Shell.Extensions InstallRemoteExtension s {uuid}";
-        p2.Start();
-        const string error = "[neovim.ide] neovim window focusing feature is not available\n"
-            + "Reason: failed to install GNOME extension: activate-window-by-title@lucaswerkmeister.de\n";
-        if (!p2.WaitForExit(10000))
+
+        // if the extension is not found, prompt the user to install it
+        if (!foundExtension)
         {
-          Debug.LogWarning($"{error}Reason: timed out after 10 seconds");
-        } else if (p2.ExitCode != 0)
-        {
-          Debug.LogWarning($"{error}Reason: non-zero exit code ({p2.ExitCode})");
-        }
-        else
-        {
-          s_WindowFocusingAvailable = true;
+          using var p2 = ProcessUtils.HeadlessProcess();
+          p2.StartInfo.FileName = "busctl";
+          p2.StartInfo.Arguments = $"--user call org.gnome.Shell.Extensions /org/gnome/Shell/Extensions org.gnome.Shell.Extensions InstallRemoteExtension s {uuid}";
+          p2.Start();
+          const string error = "[neovim.ide] neovim window focusing feature is not available\n"
+              + "Reason: failed to install GNOME extension: activate-window-by-title@lucaswerkmeister.de\n";
+          if (!p2.WaitForExit(15_000))
+          {
+            Debug.LogWarning($"{error}Reason: timed out after 10 seconds");
+          }
+          else if (p2.ExitCode != 0)
+          {
+            Debug.LogWarning($"{error}Reason: non-zero exit code ({p2.ExitCode})");
+          }
+          else
+          {
+            s_WindowFocusingAvailable = true;
+          }
         }
       }
 #elif UNITY_EDITOR_WIN

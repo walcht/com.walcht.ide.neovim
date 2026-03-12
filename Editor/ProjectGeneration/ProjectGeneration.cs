@@ -94,7 +94,6 @@ namespace Neovim.Editor
     /// </param>
     public bool SyncIfNeeded(IEnumerable<string> affectedFiles, IEnumerable<string> reimportedFiles)
     {
-      Debug.Log("SyncIfNeeded");
       using (solutionSyncMarker.Auto())
       {
         SetupProjectSupportedExtensions();
@@ -160,7 +159,6 @@ namespace Neovim.Editor
 
     public void Sync()
     {
-      Debug.Log("SyncAll");
       SetupProjectSupportedExtensions();
 
       (m_AssemblyNameProvider as AssemblyNameProvider)?.ResetPackageInfoCache();
