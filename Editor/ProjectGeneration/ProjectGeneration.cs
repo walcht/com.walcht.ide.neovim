@@ -28,18 +28,17 @@ namespace Neovim.Editor
     bool IsSupportedFile(string path);
     string SolutionFile();
     string ProjectDirectory { get; }
-    void SetAnalyzers(IReadOnlyList<string> analyzerPaths, bool dontSync = false);
+    void SetAnalyzers(IReadOnlyList<string> analyzerPaths);
+    void GetAnalyzers(List<string> analyzers);
     IAssemblyNameProvider AssemblyNameProvider { get; }
   }
 
   public class ProjectGeneration : IGenerator
   {
-    // do not remove because of the Validation API, used in LegacyStyleProjectGeneration
-    public static readonly string MSBuildNamespaceUri = "http://schemas.microsoft.com/developer/msbuild/2003";
-
     public IAssemblyNameProvider AssemblyNameProvider => m_AssemblyNameProvider;
     public string ProjectDirectory { get; }
     protected IReadOnlyList<string> m_CustomAnalyzers;
+    internal ProjectProperties m_ProjectProperties;
 
     // Use this to have the same newline ending on all platforms for consistency.
     internal const string k_WindowsNewline = "\r\n";
@@ -62,21 +61,29 @@ namespace Neovim.Editor
     internal readonly IAssemblyNameProvider m_AssemblyNameProvider;
     readonly IGUIDGenerator m_GUIDGenerator;
 
-    public ProjectGeneration() : this(Directory.GetParent(Application.dataPath).FullName)
+    public ProjectGeneration(ProjectGenerationFlag csprojFlags, IReadOnlyList<string> customAnalyzers = null)
     {
-    }
-
-    public ProjectGeneration(string tempDirectory) : this(tempDirectory, new AssemblyNameProvider(), new GUIDProvider())
-    {
-    }
-
-    public ProjectGeneration(string tempDirectory, IAssemblyNameProvider assemblyNameProvider, IGUIDGenerator guidGenerator)
-    {
-      ProjectDirectory = FileUtility.NormalizeWindowsToUnix(tempDirectory);
+      ProjectDirectory = FileUtility.NormalizeWindowsToUnix(Directory.GetParent(Application.dataPath)?.FullName);
       m_ProjectName = Path.GetFileName(ProjectDirectory);
-      m_AssemblyNameProvider = assemblyNameProvider;
-      m_GUIDGenerator = guidGenerator;
+      m_AssemblyNameProvider = new AssemblyNameProvider(csprojFlags); ;
+      m_GUIDGenerator = new GUIDProvider();
+      if (customAnalyzers != null)
+        m_CustomAnalyzers = new List<string>(customAnalyzers);
     }
+
+    internal static readonly string[] SupportedCapabilities = new[] { "Unity" };
+
+    internal static readonly string[] UnsupportedCapabilities = new[]
+    {
+      "LaunchProfiles",
+      "SharedProjectReferences",
+      "ReferenceManagerSharedProjects",
+      "ReferenceManagerProjects",
+      "COMReferences",
+      "ReferenceManagerCOM",
+      "AssemblyReferences",
+      "ReferenceManagerAssemblies",
+    };
 
     /// <summary>
     /// Syncs the scripting solution if any affected files are relevant.
@@ -145,12 +152,21 @@ namespace Neovim.Editor
       return k_ReimportSyncExtensions.Contains(new FileInfo(asset).Extension);
     }
 
-    public void SetAnalyzers(IReadOnlyList<string> analyzerPaths, bool dontSync = false)
+    public void SetAnalyzers(IReadOnlyList<string> analyzerPaths) => m_CustomAnalyzers = analyzerPaths;
+
+
+    /// <summary>
+    /// Gets currently set analyzers. You should only call this after Sync() or SyncIfNeeded() (i.e., after csproj files
+    /// regeneration).
+    /// </summary>
+    /// <param name="analyzers">currently set analyzers. This is always cleared before being appended.</param>
+    public void GetAnalyzers(List<string> analyzers)
     {
-      m_CustomAnalyzers = analyzerPaths;
-      if (dontSync)
-        return;
-      Sync();
+      analyzers.Clear();
+      if (m_ProjectProperties != null)
+      {
+        analyzers.AddRange(m_ProjectProperties.Analyzers);
+      }
     }
 
     static readonly ProfilerMarker solutionSyncMarker = new("SolutionSynchronizerSync");
@@ -421,11 +437,8 @@ namespace Neovim.Editor
       if (allAssetsProjectParts.TryGetValue(assembly.name, out var additionalAssetsForProject))
       {
         projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
-
         projectBuilder.Append(additionalAssetsForProject);
-
         projectBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
-
       }
 
       projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
@@ -478,8 +491,11 @@ namespace Neovim.Editor
       return SecurityElement.Escape(s);
     }
 
-    internal virtual void AppendProjectReference(Assembly assembly, Assembly reference, StringBuilder projectBuilder)
+    internal void AppendProjectReference(Assembly assembly, Assembly reference, StringBuilder projectBuilder)
     {
+      // If the current assembly is a Player project, we want to project-reference the corresponding Player project
+      var referenceName = m_AssemblyNameProvider.GetAssemblyName(assembly.outputPath, reference.name);
+      projectBuilder.Append(@"    <ProjectReference Include=""").Append(referenceName).Append(".csproj").Append(@""" />").Append(k_WindowsNewline);
     }
 
     private void AppendReference(string fullReference, StringBuilder projectBuilder)
@@ -604,7 +620,8 @@ namespace Neovim.Editor
     {
       var projectType = ProjectTypeOf(assembly.name);
 
-      var projectProperties = new ProjectProperties
+      // keep a reference to object properties so that we can get project stats after regeneration (e.g., analyzers)
+      m_ProjectProperties = new ProjectProperties
       {
         ProjectGuid = ProjectGuid(assembly),
         LangVersion = GetLangVersion(assembly),
@@ -616,9 +633,9 @@ namespace Neovim.Editor
         Unsafe = assembly.compilerOptions.AllowUnsafeCode | responseFilesData.Any(x => x.Unsafe),
       };
 
-      SetAnalyzerAndSourceGeneratorProperties(assembly, responseFilesData, projectProperties);
+      SetAnalyzerAndSourceGeneratorProperties(assembly, responseFilesData, m_ProjectProperties);
 
-      GetProjectHeader(projectProperties, out headerBuilder);
+      GetProjectHeader(m_ProjectProperties, out headerBuilder);
     }
 
     private enum ProjectType
@@ -644,9 +661,64 @@ namespace Neovim.Editor
       return ProjectType.Game;
     }
 
-    internal virtual void GetProjectHeader(ProjectProperties properties, out StringBuilder headerBuilder)
+    internal static void GetCapabilityBlock(StringBuilder footerBuilder, string import, string attribute, string[] capabilities)
     {
-      headerBuilder = default;
+      footerBuilder.Append($@"  <Import Project=""{import}"" Sdk=""Microsoft.NET.Sdk"" />").Append(k_WindowsNewline);
+      footerBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+      foreach (var capability in capabilities)
+      {
+        footerBuilder.Append($@"    <ProjectCapability {attribute}=""{capability}"" />").Append(k_WindowsNewline);
+      }
+      footerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+    }
+
+    internal void GetProjectHeader(ProjectProperties properties, out StringBuilder headerBuilder)
+    {
+      headerBuilder = new StringBuilder();
+
+      headerBuilder.Append(@"<Project>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"  <!-- Generated file, do not modify, your changes will be overwritten -->").Append(k_WindowsNewline);
+
+      // Prevent circular dependency issues see https://github.com/microsoft/vscode-dotnettools/issues/401
+      // We need a dedicated subfolder for each project in obj, otherwise depending on the build order, nuget cache files could be overwritten
+      // We need to do this before common.props, otherwise we'll have a MSB3539 The value of the property "BaseIntermediateOutputPath" was modified after it was used by MSBuild
+      headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+      headerBuilder.Append($"    <BaseIntermediateOutputPath>{@"Temp\obj\$(MSBuildProjectName)".NormalizePathSeparators()}</BaseIntermediateOutputPath>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <IntermediateOutputPath>$(BaseIntermediateOutputPath)</IntermediateOutputPath>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <UseCommonOutputDirectory>true</UseCommonOutputDirectory>").Append(k_WindowsNewline);
+      headerBuilder.Append($"    <OutputPath>").Append(properties.OutputPath.NormalizePathSeparators()).Append(@"</OutputPath>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+
+      // Supported capabilities
+      GetCapabilityBlock(headerBuilder, "Sdk.props", "Include", SupportedCapabilities);
+
+      headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <EnableDefaultItems>false</EnableDefaultItems>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <LangVersion>").Append(properties.LangVersion).Append(@"</LangVersion>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <RootNamespace>").Append(properties.RootNamespace).Append(@"</RootNamespace>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <OutputType>Library</OutputType>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <AssemblyName>").Append(properties.AssemblyName).Append(@"</AssemblyName>").Append(k_WindowsNewline);
+      // In the end, given we use NoConfig/NoStdLib (see below), hardcoding the target framework version will have no impact, even when targeting netstandard/net48 from Unity.
+      // But with SDK style we use netstandard2.1 (net471 for legacy), so 3rd party tools will not fail to work when .NETFW reference assemblies are not installed.
+      // Unity already selected proper API surface through referenced DLLs for us.
+      headerBuilder.Append(@"    <TargetFramework>netstandard2.1</TargetFramework>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <BaseDirectory>.</BaseDirectory>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+
+      GetProjectHeaderProperties(properties, headerBuilder);
+
+      // Explicit references
+      headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <NoStandardLibraries>true</NoStandardLibraries>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <NoStdLib>true</NoStdLib>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <NoConfig>true</NoConfig>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"    <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>").Append(k_WindowsNewline);
+      headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+
+      GetProjectHeaderAnalyzers(properties, headerBuilder);
     }
 
     internal void GetProjectHeaderProperties(ProjectProperties properties, StringBuilder headerBuilder)
@@ -697,8 +769,11 @@ namespace Neovim.Editor
       }
     }
 
-    internal virtual void GetProjectFooter(StringBuilder footerBuilder)
+    internal void GetProjectFooter(StringBuilder footerBuilder)
     {
+      // Unsupported capabilities
+      GetCapabilityBlock(footerBuilder, "Sdk.targets", "Remove", UnsupportedCapabilities);
+      footerBuilder.Append("</Project>").Append(k_WindowsNewline);
     }
 
     private static string GetSolutionText()
@@ -724,7 +799,7 @@ namespace Neovim.Editor
     private void SyncSolution(IEnumerable<Assembly> assemblies)
     {
       if (InvalidCharactersRegexPattern.IsMatch(ProjectDirectory))
-        Debug.LogWarning("Project path contains special characters, which can be an issue when opening Visual Studio");
+        Debug.LogWarning("Project path contains special characters, which can be an issue when opening Neovim");
 
       var solutionFile = SolutionFile();
       var previousSolution = File.Exists(solutionFile) ? SolutionParser.ParseSolutionFile(solutionFile) : null;
@@ -754,6 +829,12 @@ namespace Neovim.Editor
 
         projects.AddRange(externalProjects);
         properties = previousSolution.Properties;
+
+        // Remove projects (i.e., csproj files) that were used by previous solution but no longer used with this solution
+        previousSolution.Projects
+          .Where(p => FileUtility.IsFileInProjectRootDirectory(p.FileName)
+              && !projects.Exists(_p => _p.FileName == p.FileName))
+          .ToList().ForEach(p => File.Delete(FileUtility.GetAssetFullPath(p.FileName)));
       }
 
       string propertiesText = GetPropertiesText(properties);
@@ -882,11 +963,6 @@ namespace Neovim.Editor
       if (path.StartsWith($"{prefix}{Path.DirectorySeparatorChar}") && (path.Length > prefix.Length))
         return path[(prefix.Length + 1)..];
       return path;
-    }
-
-    internal static string GetProjectExtension()
-    {
-      return ".csproj";
     }
 
     internal string ProjectGuid(string assemblyName)

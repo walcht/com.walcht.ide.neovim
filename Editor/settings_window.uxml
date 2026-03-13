@@ -6,37 +6,33 @@
                 <ui:VisualElement name="project-generation-settings" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); padding-bottom: 5px; margin-bottom: 5px; padding-left: 5px; border-top-width: 1px; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; padding-top: 5px; padding-right: 5px;">
                     <ui:Label text="Generate .csproj files for:" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
                     <ui:VisualElement style="flex-grow: 1; flex-direction: column; flex-wrap: wrap; align-items: stretch; justify-content: flex-start; align-self: auto; align-content: flex-start;">
-                        <ui:VisualElement name="embedded-packages" style="flex-grow: 1; flex-direction: row;">
-                            <ui:Label text="embedded packages" style="flex-grow: 1; flex-shrink: 1;"/>
-                            <ui:Toggle label="" name="embedded-packages-tg"/>
-                        </ui:VisualElement>
-                        <ui:VisualElement name="local-packages" style="flex-grow: 1; flex-direction: row;">
-                            <ui:Label text="local packages" style="flex-grow: 1; flex-shrink: 1;"/>
-                            <ui:Toggle label="" name="local-packages-tg"/>
-                        </ui:VisualElement>
-                        <ui:VisualElement name="registry-packages" style="flex-grow: 1; flex-direction: row;">
-                            <ui:Label text="registry packages" style="flex-grow: 1; flex-shrink: 1;"/>
-                            <ui:Toggle label="" name="registry-packages-tg"/>
-                        </ui:VisualElement>
-                        <ui:VisualElement name="git-packages" style="flex-grow: 1; flex-direction: row;">
-                            <ui:Label text="git packages" style="flex-grow: 1; flex-shrink: 1;"/>
-                            <ui:Toggle label="" name="git-packages-tg"/>
-                        </ui:VisualElement>
-                        <ui:VisualElement name="built-in-packages" style="flex-grow: 1; flex-direction: row;">
-                            <ui:Label text="built-in packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                        <ui:VisualElement name="built-in-packages" style="flex-grow: 1; flex-direction: row; padding-top: 3px; padding-right: 3px; padding-bottom: 3px; padding-left: 3px; background-color: rgb(77, 77, 77); border-top-left-radius: 5px; border-top-right-radius: 5px;">
+                            <ui:Label text="built-in packages" tooltip="Generate .csproj files for referenced built-in packages. This adds LSP support for referenced built-in packages." style="flex-grow: 1; flex-shrink: 1; -unity-text-align: middle-left;"/>
                             <ui:Toggle label="" name="built-in-packages-tg"/>
                         </ui:VisualElement>
-                        <ui:VisualElement name="local-tarball-packages" style="flex-grow: 1; flex-direction: row;">
-                            <ui:Label text="local tarball packages" style="flex-grow: 1; flex-shrink: 1;"/>
+                        <ui:VisualElement name="registry-packages" style="flex-grow: 1; flex-direction: row; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; border-bottom-left-radius: 0; padding-top: 3px; padding-right: 3px; padding-bottom: 3px; padding-left: 3px;">
+                            <ui:Label text="registry packages" tooltip="Generate .csproj files for packages installed from the Unity Registry. This adds LSP support for Unity Registry packages." style="flex-grow: 1; flex-shrink: 1; -unity-text-align: middle-left;"/>
+                            <ui:Toggle label="" name="registry-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="git-packages" style="flex-grow: 1; flex-direction: row; background-color: rgb(77, 77, 77); padding-top: 3px; padding-right: 3px; padding-bottom: 3px; padding-left: 3px;">
+                            <ui:Label text="git packages" tooltip="Generate .csproj files for packages installed from Git. This adds LSP support for Git packages." style="flex-grow: 1; flex-shrink: 1; -unity-text-align: middle-left;"/>
+                            <ui:Toggle label="" name="git-packages-tg"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="local-packages" style="flex-grow: 1; flex-direction: row; background-color: rgba(0, 0, 0, 0); margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 3px; padding-right: 3px; padding-bottom: 3px; padding-left: 3px;">
+                            <ui:Label text="local packages" tooltip="Generate .csproj files for packages installed locally from disk. This adds LSP support for local/disk packages." style="flex-grow: 1; flex-shrink: 1; -unity-text-align: middle-left;"/>
+                            <ui:Toggle label="" name="local-packages-tg" style="flex-direction: row; align-self: center; align-content: flex-start; align-items: stretch;"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="local-tarball-packages" style="flex-grow: 1; flex-direction: row; padding-top: 3px; padding-right: 3px; padding-bottom: 3px; padding-left: 3px; background-color: rgb(77, 77, 77);">
+                            <ui:Label text="local tarball packages" tooltip="Generate .csproj files for referenced local tarball packages. This adds LSP support for referenced local tarball-installed packages." style="flex-grow: 1; flex-shrink: 1; -unity-text-align: middle-left;"/>
                             <ui:Toggle label="" name="local-tarball-packages-tg"/>
                         </ui:VisualElement>
-                        <ui:VisualElement name="unknown-source-packages" style="flex-grow: 1; flex-direction: row;">
-                            <ui:Label text="unknown-source packages" style="flex-grow: 1; flex-shrink: 1;"/>
-                            <ui:Toggle label="" name="unknown-source-packages-tg"/>
+                        <ui:VisualElement name="embedded-packages" style="flex-grow: 1; flex-direction: row; padding-top: 3px; padding-right: 3px; padding-bottom: 3px; padding-left: 3px; background-color: rgba(0, 0, 0, 0);">
+                            <ui:Label text="embedded packages" style="flex-grow: 1; flex-shrink: 1; -unity-text-align: middle-left;"/>
+                            <ui:Toggle label="" name="embedded-packages-tg"/>
                         </ui:VisualElement>
-                        <ui:VisualElement name="player-projects" style="flex-grow: 1; flex-direction: row;">
-                            <ui:Label text="player projects" tooltip="For each player project generate an additional csproj with the name &#39;project-player.csproj&#39;" style="flex-grow: 1; flex-shrink: 1;"/>
-                            <ui:Toggle label="" name="player-projects-tg"/>
+                        <ui:VisualElement name="unknown-source-packages" style="flex-grow: 1; flex-direction: row; padding-top: 3px; padding-right: 3px; padding-bottom: 3px; padding-left: 3px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; background-color: rgb(77, 77, 77);">
+                            <ui:Label text="unknown-source packages" tooltip="Generate .csproj files for referenced unknown packages. This adds LSP support for referenced unknown packages." style="flex-grow: 1; flex-shrink: 1; border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; -unity-text-align: middle-left;"/>
+                            <ui:Toggle label="" name="unknown-source-packages-tg"/>
                         </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>

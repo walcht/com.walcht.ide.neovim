@@ -39,6 +39,17 @@ namespace Neovim.Editor
     private static float s_Height = Screen.height * 0.5f;
 
     ////////////////////////////////////////////////////////////////////////////
+    // project generation flags
+    ////////////////////////////////////////////////////////////////////////////
+    private Toggle m_EmbeddedPackagesTg;
+    private Toggle m_LocalPackagesTg;
+    private Toggle m_RegistryPackagesTg;
+    private Toggle m_GitPackagesTg;
+    private Toggle m_BuiltinPackagesTg;
+    private Toggle m_LocalTarballPackagesTg;
+    private Toggle m_UnknownSourcePackagesTg;
+
+    ////////////////////////////////////////////////////////////////////////////
     // nvim executable path
     ////////////////////////////////////////////////////////////////////////////
     private TextField m_NvimExecutablePathTf = null;
@@ -98,6 +109,7 @@ namespace Neovim.Editor
 
 
     // MenuItem Creates a menu item and invokes the static function that follows it when the menu item is selected.
+    // TODO: don't show if Neovim is not chosen in External Editor Tools
     [MenuItem("Neovim/Settings")]
     public static void ShowWindow()
     {
@@ -173,61 +185,33 @@ namespace Neovim.Editor
 
       // csproj generation settings
       {
-        var tg0 = mainPanel.Q<Toggle>("embedded-packages-tg");
-        tg0.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Embedded));
-        tg0.RegisterValueChangedCallback(_ =>
-        {
-          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Embedded);
-        });
+        m_EmbeddedPackagesTg = mainPanel.Q<Toggle>("embedded-packages-tg");
+        m_EmbeddedPackagesTg.SetValueWithoutNotify(NeovimCodeEditor.CsprojFlags.HasFlag(ProjectGenerationFlag.Embedded));
+        m_EmbeddedPackagesTg.RegisterValueChangedCallback(OnProjectGenerationFlag);
 
-        var tg1 = mainPanel.Q<Toggle>("local-packages-tg");
-        tg1.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Local));
-        tg1.RegisterValueChangedCallback(_ =>
-        {
-          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Local);
-        });
+        m_LocalPackagesTg = mainPanel.Q<Toggle>("local-packages-tg");
+        m_LocalPackagesTg.SetValueWithoutNotify(NeovimCodeEditor.CsprojFlags.HasFlag(ProjectGenerationFlag.Local));
+        m_LocalPackagesTg.RegisterValueChangedCallback(OnProjectGenerationFlag);
 
-        var tg2 = mainPanel.Q<Toggle>("registry-packages-tg");
-        tg2.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Registry));
-        tg2.RegisterValueChangedCallback(_ =>
-        {
-          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Registry);
-        });
+        m_RegistryPackagesTg = mainPanel.Q<Toggle>("registry-packages-tg");
+        m_RegistryPackagesTg.SetValueWithoutNotify(NeovimCodeEditor.CsprojFlags.HasFlag(ProjectGenerationFlag.Registry));
+        m_RegistryPackagesTg.RegisterValueChangedCallback(OnProjectGenerationFlag);
 
-        var tg3 = mainPanel.Q<Toggle>("git-packages-tg");
-        tg3.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Git));
-        tg3.RegisterValueChangedCallback(_ =>
-        {
-          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Git);
-        });
+        m_GitPackagesTg = mainPanel.Q<Toggle>("git-packages-tg");
+        m_GitPackagesTg.SetValueWithoutNotify(NeovimCodeEditor.CsprojFlags.HasFlag(ProjectGenerationFlag.Git));
+        m_GitPackagesTg.RegisterValueChangedCallback(OnProjectGenerationFlag);
 
-        var tg4 = mainPanel.Q<Toggle>("built-in-packages-tg");
-        tg4.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.BuiltIn));
-        tg4.RegisterValueChangedCallback(_ =>
-        {
-          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.BuiltIn);
-        });
+        m_BuiltinPackagesTg = mainPanel.Q<Toggle>("built-in-packages-tg");
+        m_BuiltinPackagesTg.SetValueWithoutNotify(NeovimCodeEditor.CsprojFlags.HasFlag(ProjectGenerationFlag.BuiltIn));
+        m_BuiltinPackagesTg.RegisterValueChangedCallback(OnProjectGenerationFlag);
 
-        var tg5 = mainPanel.Q<Toggle>("local-tarball-packages-tg");
-        tg5.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.LocalTarBall));
-        tg5.RegisterValueChangedCallback(_ =>
-        {
-          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.LocalTarBall);
-        });
+        m_LocalTarballPackagesTg = mainPanel.Q<Toggle>("local-tarball-packages-tg");
+        m_LocalTarballPackagesTg.SetValueWithoutNotify(NeovimCodeEditor.CsprojFlags.HasFlag(ProjectGenerationFlag.LocalTarBall));
+        m_LocalTarballPackagesTg.RegisterValueChangedCallback(OnProjectGenerationFlag);
 
-        var tg6 = mainPanel.Q<Toggle>("unknown-source-packages-tg");
-        tg6.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.Unknown));
-        tg6.RegisterValueChangedCallback(_ =>
-        {
-          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.Unknown);
-        });
-
-        var tg7 = mainPanel.Q<Toggle>("player-projects-tg");
-        tg7.SetValueWithoutNotify(NeovimCodeEditor.GetProjectGenerationFlag(ProjectGenerationFlag.PlayerAssemblies));
-        tg7.RegisterValueChangedCallback(_ =>
-        {
-          NeovimCodeEditor.ToggleProjectGenerationFlag(ProjectGenerationFlag.PlayerAssemblies);
-        });
+        m_UnknownSourcePackagesTg = mainPanel.Q<Toggle>("unknown-source-packages-tg");
+        m_UnknownSourcePackagesTg.SetValueWithoutNotify(NeovimCodeEditor.CsprojFlags.HasFlag(ProjectGenerationFlag.Unknown));
+        m_UnknownSourcePackagesTg.RegisterValueChangedCallback(OnProjectGenerationFlag);
       }
 
       // nvim executable path args
@@ -419,6 +403,18 @@ namespace Neovim.Editor
 
     private void Save()
     {
+      // update ProjectGenerationFlags
+      ProjectGenerationFlag flags = ProjectGenerationFlag.None
+        | (m_EmbeddedPackagesTg.value ? ProjectGenerationFlag.Embedded : 0)
+        | (m_RegistryPackagesTg.value ? ProjectGenerationFlag.Registry : 0)
+        | (m_GitPackagesTg.value ? ProjectGenerationFlag.Git : 0)
+        | (m_BuiltinPackagesTg.value ? ProjectGenerationFlag.BuiltIn : 0)
+        | (m_LocalPackagesTg.value ? ProjectGenerationFlag.Local : 0)
+        | (m_LocalTarballPackagesTg.value ? ProjectGenerationFlag.LocalTarBall : 0)
+        | (m_UnknownSourcePackagesTg.value ? ProjectGenerationFlag.Unknown : 0);
+      // this potentially causes regeneration of csproj
+      NeovimCodeEditor.CsprojFlags = flags;
+
       // update nvim executable path
       m_NvimExecutablePathTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath = m_NvimExecutablePathTf.value);
       m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
@@ -454,10 +450,10 @@ namespace Neovim.Editor
     }
 
 
-    private void OnProjectRegenerationClick()
-    {
-      CodeEditor.Editor.CurrentCodeEditor.SyncAll();
-    }
+    private void OnProjectRegenerationClick() => CodeEditor.Editor.CurrentCodeEditor.SyncAll();
+
+
+    private void OnProjectGenerationFlag(ChangeEvent<bool> _) => SetDirty(true);
 
 
     private void OnAddModifierBindingClick()

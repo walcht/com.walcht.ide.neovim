@@ -172,7 +172,7 @@ namespace Neovim.Editor
 
     /// <summary>
     /// Sets the default terminal launch command, terminal launch arguments, open-file request arguments,
-    /// and jump-to-cursor-position request arguments in case any of them is null.
+    /// and jump-to-cursor-position request arguments in case any of them is null/not already set.
     /// </summary>
     private static bool SetDefaults()
     {
@@ -181,7 +181,6 @@ namespace Neovim.Editor
         s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
       }
 
-      // get terminal launch cmd and its args from Unity editor preferences
       string termLaunchCmd = s_Config.TermLaunchCmd;
       string termLaunchArgs = s_Config.TermLaunchArgs;
 
@@ -214,6 +213,7 @@ namespace Neovim.Editor
       {
         s_Config.ModifierBindings.Add(new ModifierBinding { Modifiers = 0, Args = s_Config.OpenFileArgs });
         s_Config.SetDirty(true);
+        s_Config.Save();
       }
 
       if (!s_Config.ModifierBindings.Any())
@@ -225,8 +225,8 @@ namespace Neovim.Editor
         s_Config.ModifierBindings = new System.Collections.Generic.List<ModifierBinding> {
           new() { Modifiers = 0, Args = s_OpenFileArgsTemplates[0].Args }
         };
+        s_Config.Save();
       }
-      s_Config.Save();
 
       if (string.IsNullOrWhiteSpace(s_Config.JumpToCursorPositionArgs))
       {
@@ -261,13 +261,13 @@ namespace Neovim.Editor
     // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
     static NeovimCodeEditor()
     {
-
-      s_Generator = new SdkStyleProjectGeneration();
-
       // config initialization
       s_Config = NeovimEditorConfig.Load();
-      if (!SetDefaults()) return;
-      s_Generator.SetAnalyzers(s_Config.Analyzers, dontSync: true);
+      if (!SetDefaults())
+        return;
+
+      // initialize with project regeneration flags from config
+      s_Generator = new ProjectGeneration(s_Config.CsprojFlags, s_Config.Analyzers);
 
       // if nvim executable path is already set in the config - check if it is still valid
       if (!string.IsNullOrWhiteSpace(s_Config.NvimExecutablePath))
@@ -499,11 +499,12 @@ namespace Neovim.Editor
     }
 
     /// <summary>
-    /// Reset the Neovim configuration by deleting the saved EditorPrefs and reinitializing.
+    /// Reset the Neovim configuration by deleting the saved EditorPrefs and re-initializing.
     /// Use this when settings become corrupted or you want to start fresh.
     /// </summary>
-    public static void ResetConfig(bool dontSync = false)
+    public static void ResetConfig()
     {
+      NeovimEditorConfig.Reset();
       s_Config = NeovimEditorConfig.Load();
 
       // set some defaults in case they are not already set (launch cmd and args, open-file args, etc.)
@@ -511,8 +512,9 @@ namespace Neovim.Editor
         return;
 
       // sync deserialized analyzers with the project generator's analyzers
-      s_Generator.SetAnalyzers(s_Config.Analyzers, dontSync);
-      // Debug.Log("[neovim.ide] reset the previously saved neovim config");
+      s_Generator.SetAnalyzers(s_Config.Analyzers);
+      s_Generator.AssemblyNameProvider.CsprojFlags = s_Config.CsprojFlags;
+      s_Generator.Sync();
     }
 
     // Unity calls this method when it populates "Preferences/External Tools"
@@ -530,15 +532,16 @@ namespace Neovim.Editor
     }
 
 
-    public static void ToggleProjectGenerationFlag(ProjectGenerationFlag preference)
+    public static ProjectGenerationFlag CsprojFlags
     {
-      s_Generator.AssemblyNameProvider.ToggleProjectGeneration(preference);
-    }
-
-
-    public static bool GetProjectGenerationFlag(ProjectGenerationFlag preference)
-    {
-      return s_Generator.AssemblyNameProvider.ProjectGenerationFlag.HasFlag(preference);
+      get => s_Config.CsprojFlags;
+      set
+      {
+        if (value == s_Config.CsprojFlags)
+          return;
+        s_Config.CsprojFlags = s_Generator.AssemblyNameProvider.CsprojFlags = value;
+        s_Generator.Sync();
+      }
     }
 
 

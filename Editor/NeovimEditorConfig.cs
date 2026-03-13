@@ -33,7 +33,31 @@ namespace Neovim.Editor
   [Serializable]
   public class NeovimEditorConfig
   {
-    private bool m_Dirty = false;
+    // keep this defaulted to true
+    private bool m_Dirty = true;
+
+    public ProjectGenerationFlag m_CsprojFlags =
+      ProjectGenerationFlag.BuiltIn |
+      ProjectGenerationFlag.Embedded |
+      ProjectGenerationFlag.Git |
+      ProjectGenerationFlag.Local |
+      ProjectGenerationFlag.LocalTarBall |
+      ProjectGenerationFlag.Registry;
+
+    /// <summary>
+    /// Project generation flags (i.e., generate .csproj files for which packages/assets/projects).
+    /// </summary>
+    public ProjectGenerationFlag CsprojFlags
+    {
+      get => m_CsprojFlags;
+      set
+      {
+        if (value == m_CsprojFlags)
+          return;
+        m_CsprojFlags = value;
+        m_Dirty = true;
+      }
+    }
 
     private string m_NvimExecutablePath;
 
@@ -193,11 +217,24 @@ namespace Neovim.Editor
       EditorPrefs.SetString("NvimUnityConfigJson", json);
     }
 
+    public static void Reset()
+    {
+      EditorPrefs.DeleteKey("NvimUnityConfigJson");
+    }
+
     public static NeovimEditorConfig Load()
     {
       string json = EditorPrefs.GetString("NvimUnityConfigJson");
+
+      // this means that there isn't any saved (i.e., persistent) config.
+      // create a new config which should have some minimal default state
+      // dirty flag is already set to true by default
       if (string.IsNullOrWhiteSpace(json))
-        return new();
+      {
+        var config = new NeovimEditorConfig();
+        config.SetDirty(true);  // just to be 100% sure
+        return config;
+      }
 
       var neovimConfig = JsonConvert.DeserializeObject<NeovimEditorConfig>(json);
       // since we have just deserialized this - it should not have an internal dirty state

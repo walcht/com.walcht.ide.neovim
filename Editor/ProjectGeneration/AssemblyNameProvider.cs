@@ -12,7 +12,7 @@ namespace Neovim.Editor
   {
     string[] ProjectSupportedExtensions { get; }
     string ProjectGenerationRootNamespace { get; }
-    ProjectGenerationFlag ProjectGenerationFlag { get; }
+    ProjectGenerationFlag CsprojFlags { get; set; }
 
     string GetAssemblyNameFromScriptPath(string path);
     string GetAssemblyName(string assemblyOutputPath, string assemblyName);
@@ -21,36 +21,29 @@ namespace Neovim.Editor
     IEnumerable<string> GetAllAssetPaths();
     UnityEditor.PackageManager.PackageInfo FindForAssetPath(string assetPath);
     ResponseFileData ParseResponseFile(string responseFilePath, string projectDirectory, string[] systemReferenceDirectories);
-    void ToggleProjectGeneration(ProjectGenerationFlag preference);
   }
 
   public class AssemblyNameProvider : IAssemblyNameProvider
   {
-    private readonly Dictionary<string, UnityEditor.PackageManager.PackageInfo> m_PackageInfoCache = new();
+    internal static readonly string s_AssemblyOutput = @"Temp\bin\Debug\".NormalizePathSeparators();
+    internal static readonly string s_PlayerAssemblyOutput = @"Temp\bin\Debug\Player\".NormalizePathSeparators();
 
-    ProjectGenerationFlag? m_ProjectGenerationFlag;
-    static ProjectGenerationFlag DefaultProjectGenerationFlag => (ProjectGenerationFlag)EditorPrefs.GetInt(
-        "unity_project_generation_flag",
-        (int)(ProjectGenerationFlag.Local | ProjectGenerationFlag.Embedded));
+    private readonly Dictionary<string, UnityEditor.PackageManager.PackageInfo> m_PackageInfoCache = new();
+    private ProjectGenerationFlag m_CsprojFlags = ProjectGenerationFlag.None;
 
     public string[] ProjectSupportedExtensions => EditorSettings.projectGenerationUserExtensions;
 
     public string ProjectGenerationRootNamespace => EditorSettings.projectGenerationRootNamespace;
 
-    public ProjectGenerationFlag ProjectGenerationFlag
+    public ProjectGenerationFlag CsprojFlags
     {
-      get { return ProjectGenerationFlagImpl; }
-      private set { ProjectGenerationFlagImpl = value; }
+      get { return m_CsprojFlags; }
+      set { m_CsprojFlags = value; }
     }
 
-    internal virtual ProjectGenerationFlag ProjectGenerationFlagImpl
+    public AssemblyNameProvider(ProjectGenerationFlag csprojFlags)
     {
-      get => m_ProjectGenerationFlag ??= DefaultProjectGenerationFlag;
-      private set
-      {
-        EditorPrefs.SetInt("unity_project_generation_flag", (int)value);
-        m_ProjectGenerationFlag = value;
-      }
+      m_CsprojFlags = csprojFlags;
     }
 
     public string GetAssemblyNameFromScriptPath(string path)
@@ -58,18 +51,15 @@ namespace Neovim.Editor
       return CompilationPipeline.GetAssemblyNameFromScriptPath(path);
     }
 
-    internal static readonly string AssemblyOutput = @"Temp\bin\Debug\".NormalizePathSeparators();
-    internal static readonly string PlayerAssemblyOutput = @"Temp\bin\Debug\Player\".NormalizePathSeparators();
-
     public IEnumerable<Assembly> GetAssemblies(Func<string, bool> shouldFileBePartOfSolution)
     {
-      IEnumerable<Assembly> assemblies = GetAssembliesByType(AssembliesType.Editor, shouldFileBePartOfSolution, AssemblyOutput);
+      IEnumerable<Assembly> assemblies = GetAssembliesByType(AssembliesType.Editor, shouldFileBePartOfSolution, s_AssemblyOutput);
 
-      if (!ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.PlayerAssemblies))
+      if (!CsprojFlags.HasFlag(ProjectGenerationFlag.PlayerAssemblies))
       {
         return assemblies;
       }
-      var playerAssemblies = GetAssembliesByType(AssembliesType.Player, shouldFileBePartOfSolution, PlayerAssemblyOutput);
+      var playerAssemblies = GetAssembliesByType(AssembliesType.Player, shouldFileBePartOfSolution, s_PlayerAssemblyOutput);
       return assemblies.Concat(playerAssemblies);
     }
 
@@ -157,19 +147,19 @@ namespace Neovim.Editor
       switch (packageSource)
       {
         case PackageSource.Embedded:
-          return !ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.Embedded);
+          return !m_CsprojFlags.HasFlag(ProjectGenerationFlag.Embedded);
         case PackageSource.Registry:
-          return !ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.Registry);
+          return !m_CsprojFlags.HasFlag(ProjectGenerationFlag.Registry);
         case PackageSource.BuiltIn:
-          return !ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.BuiltIn);
+          return !m_CsprojFlags.HasFlag(ProjectGenerationFlag.BuiltIn);
         case PackageSource.Unknown:
-          return !ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.Unknown);
+          return !m_CsprojFlags.HasFlag(ProjectGenerationFlag.Unknown);
         case PackageSource.Local:
-          return !ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.Local);
+          return !m_CsprojFlags.HasFlag(ProjectGenerationFlag.Local);
         case PackageSource.Git:
-          return !ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.Git);
+          return !m_CsprojFlags.HasFlag(ProjectGenerationFlag.Git);
         case PackageSource.LocalTarball:
-          return !ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.LocalTarBall);
+          return !m_CsprojFlags.HasFlag(ProjectGenerationFlag.LocalTarBall);
         default:
           break;
       }
@@ -186,31 +176,14 @@ namespace Neovim.Editor
       );
     }
 
-    public void ToggleProjectGeneration(ProjectGenerationFlag preference)
-    {
-      if (ProjectGenerationFlag.HasFlag(preference))
-      {
-        ProjectGenerationFlag ^= preference;
-      }
-      else
-      {
-        ProjectGenerationFlag |= preference;
-      }
-    }
-
     internal void ResetPackageInfoCache()
     {
       m_PackageInfoCache.Clear();
     }
 
-    public void ResetProjectGenerationFlag()
-    {
-      ProjectGenerationFlag = ProjectGenerationFlag.None;
-    }
-
     public string GetAssemblyName(string assemblyOutputPath, string assemblyName)
     {
-      if (assemblyOutputPath == PlayerAssemblyOutput)
+      if (assemblyOutputPath == s_PlayerAssemblyOutput)
         return assemblyName + ".Player";
 
       return assemblyName;
