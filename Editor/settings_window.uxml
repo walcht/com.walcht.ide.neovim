@@ -72,6 +72,14 @@
                         <ui:VisualElement name="analyzer-rows" style="flex-grow: 1;"/>
                     </ui:VisualElement>
                 </ui:VisualElement>
+                <ui:VisualElement name="server-management" style="flex-grow: 1; border-left-width: 1px; border-right-width: 1px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; margin-bottom: 5px; margin-top: 0; border-top-width: 1px; border-bottom-width: 1px; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;">
+                    <ui:Label text="Server management:" enable-rich-text="false" style="-unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 5px; padding-left: 0; white-space: normal;"/>
+                    <ui:VisualElement style="flex-direction: row; flex-wrap: wrap; align-items: center;">
+                        <ui:Button text="Kill Orphaned Servers" name="kill-orphaned-btn" tooltip="Force-kills ALL orphaned nvim processes listening on /tmp/nvimsocket_* sockets. Use when Unity crashed and left zombie nvim servers behind. This is destructive: uses pkill/taskkill so unsaved buffers will be lost. Only affects nvim processes started by this plugin." style="margin-right: 3px;"/>
+                        <ui:Button text="Force Reset" name="force-reset-btn" tooltip="Gracefully shuts down the current nvim server (sends :qa! to preserve swap files), then resets all plugin settings to defaults. Use when settings are corrupted or you want a clean start." style="margin-right: 10px;"/>
+                        <ui:Toggle label="Kill nvim on quit" name="kill-nvim-on-quit-tg" tooltip="When enabled, the nvim server for this Unity instance is gracefully shut down (:qa!) when Unity quits. When disabled (default), the nvim session persists across Unity restarts — useful for keeping your editing session alive during recompilation."/>
+                    </ui:VisualElement>
+                </ui:VisualElement>
             </ui:ScrollView>
             <ui:VisualElement name="toolbar" style="flex-grow: 0; flex-direction: row; flex-shrink: 0; align-self: auto; align-content: flex-start; align-items: stretch; position: relative; height: auto; width: auto; top: auto; left: auto; justify-content: flex-start; bottom: auto; right: auto;">
                 <ui:Button text="Apply" name="apply" style="margin-right: 3px;"/>

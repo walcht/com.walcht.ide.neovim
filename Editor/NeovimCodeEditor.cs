@@ -27,7 +27,7 @@ namespace Neovim.Editor
     public static readonly string s_InstanceId = Process.GetCurrentProcess().Id.ToString();
 
 #if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-    static string s_ServerSocket = "/tmp/nvimsocket";
+    static string s_ServerSocket = $"/tmp/nvimsocket_{Process.GetCurrentProcess().Id}";
 #else // UNITY_EDITOR_WIN
     // this is initialized to some "127.0.0.1:<random-port>" because Unix domain sockets on Windows are a bitch
     // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
@@ -384,6 +384,8 @@ namespace Neovim.Editor
       s_WindowFocusingAvailable = true;
 #endif
 
+      EditorApplication.quitting += OnEditorQuitting;
+
       NeovimCodeEditor editor = new(s_Generator);
       CodeEditor.Register(editor);
     }
@@ -515,6 +517,76 @@ namespace Neovim.Editor
       s_Generator.SetAnalyzers(s_Config.Analyzers);
       s_Generator.AssemblyNameProvider.CsprojFlags = s_Config.CsprojFlags;
       s_Generator.Sync();
+    }
+
+    private static void OnEditorQuitting()
+    {
+      if (!s_Config.KillNvimOnQuit)
+        return;
+      KillNvimServer();
+    }
+
+    /// <summary>
+    /// Gracefully shuts down the nvim server for this Unity instance by sending ":qa!" via --remote-send.
+    /// This allows nvim to clean up swap files and session state properly (unlike kill -9).
+    /// </summary>
+    public static void KillNvimServer()
+    {
+      if (!IsNvimServerInstanceAlreadyRunning())
+        return;
+      try
+      {
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = s_Config.NvimExecutablePath ?? "nvim";
+        p.StartInfo.Arguments = $"--server {s_ServerSocket} --remote-send \":qa!<CR>\"";
+#if UNITY_EDITOR_WIN
+        p.StartInfo.Arguments = $"--server {s_Config.PrevServerSocket} --remote-send \":qa!<CR>\"";
+#endif
+        p.RunWithAssertion(s_Config.ProcessTimeout);
+      }
+      catch (Exception e)
+      {
+        Debug.LogWarning($"[neovim.ide] failed to kill nvim server: {e.Message}");
+      }
+    }
+
+    /// <summary>
+    /// Force-kills ALL orphaned nvim processes that were listening on /tmp/nvimsocket_* sockets.
+    /// Use this as a last resort when nvim servers were left behind by crashed Unity instances
+    /// and can no longer be reached via --remote-send. This is a destructive operation that kills
+    /// processes with SIGTERM (pkill) or /F (taskkill) — unsaved buffers will be lost.
+    /// </summary>
+    public static void KillOrphanedNvimServers()
+    {
+#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      try
+      {
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = "pkill";
+        p.StartInfo.Arguments = "-f \"nvim.*--listen /tmp/nvimsocket_\"";
+        p.Start();
+        p.WaitForExit(3000);
+        Debug.Log("[neovim.ide] killed orphaned nvim server processes.");
+      }
+      catch (Exception e)
+      {
+        Debug.LogWarning($"[neovim.ide] failed to kill orphaned nvim servers: {e.Message}");
+      }
+#elif UNITY_EDITOR_WIN
+      try
+      {
+        using var p = ProcessUtils.HeadlessProcess();
+        p.StartInfo.FileName = "taskkill";
+        p.StartInfo.Arguments = "/F /IM nvim.exe";
+        p.Start();
+        p.WaitForExit(3000);
+        Debug.Log("[neovim.ide] killed orphaned nvim server processes.");
+      }
+      catch (Exception e)
+      {
+        Debug.LogWarning($"[neovim.ide] failed to kill orphaned nvim servers: {e.Message}");
+      }
+#endif
     }
 
     // Unity calls this method when it populates "Preferences/External Tools"
@@ -807,8 +879,8 @@ namespace Neovim.Editor
           {
             using var p = ProcessUtils.HeadlessProcess();
             p.StartInfo.FileName = "wmctrl";
-            p.StartInfo.Arguments = "-a nvimunity";
-            var error_msg = "[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+            p.StartInfo.Arguments = $"-a nvimunity-{s_InstanceId}";
+            var error_msg = $"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity-{s_InstanceId}'.\n"
               + $"Reason: cmd `{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}` failed.\n";
             try
             {
@@ -829,10 +901,10 @@ namespace Neovim.Editor
             // a clusterfuck of a mess - TODO: learn gdbus and clean this shit up somehow
             using var p = ProcessUtils.HeadlessProcess();
             p.StartInfo.FileName = "gdbus";
-            p.StartInfo.Arguments = @"call --session --dest org.gnome.Shell \
+            p.StartInfo.Arguments = $@"call --session --dest org.gnome.Shell \
 --object-path /de/lucaswerkmeister/ActivateWindowByTitle \
---method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring 'nvimunity'";
-            const string error_msg = "[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity'.\n"
+--method de.lucaswerkmeister.ActivateWindowByTitle.activateBySubstring 'nvimunity-{s_InstanceId}'";
+            string error_msg = $"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity-{s_InstanceId}'.\n"
                   + "Did you logout and login of your GNOME session?\n"
                   + "Did you install the 'activate-window-by-title@lucaswerkmeister.de' GNOME extension?\n";
             try

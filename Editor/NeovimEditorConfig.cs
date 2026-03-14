@@ -196,6 +196,19 @@ namespace Neovim.Editor
     }
 #endif
 
+    private bool m_KillNvimOnQuit = false;
+    public bool KillNvimOnQuit
+    {
+      get => m_KillNvimOnQuit;
+      set
+      {
+        if (value == m_KillNvimOnQuit)
+          return;
+        m_KillNvimOnQuit = value;
+        m_Dirty = true;
+      }
+    }
+
     private List<string> m_Analyzers = new();
     public List<string> Analyzers
     {

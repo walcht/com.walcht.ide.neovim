@@ -16,6 +16,9 @@ namespace Neovim.Editor
     private Button m_AddBindingModifierBtn = null;
     private Button m_ResetBtn = null;
     private Button m_RegenerateProjectFilesBtn = null;
+    private Button m_KillOrphanedBtn = null;
+    private Button m_ForceResetBtn = null;
+    private Toggle m_KillNvimOnQuitTg = null;
 #if UNITY_EDITOR_WIN
     private TextField m_ProcessPIDPlaceholderTf = null;
 #endif
@@ -178,10 +181,22 @@ namespace Neovim.Editor
       m_AddBindingModifierBtn = mainPanel.Q<Button>("add-binding");
       m_RegenerateProjectFilesBtn = mainPanel.Q<Button>("regenerate-project-files-btn");
 
+      m_KillOrphanedBtn = mainPanel.Q<Button>("kill-orphaned-btn");
+      m_ForceResetBtn = mainPanel.Q<Button>("force-reset-btn");
+      m_KillNvimOnQuitTg = mainPanel.Q<Toggle>("kill-nvim-on-quit-tg");
+
       m_ApplyBtn.clicked += OnApplyClick;
       m_ResetBtn.clicked += OnResetClick;
       m_AddBindingModifierBtn.clicked += OnAddModifierBindingClick;
       m_RegenerateProjectFilesBtn.clicked += OnProjectRegenerationClick;
+      m_KillOrphanedBtn.clicked += OnKillOrphanedClick;
+      m_ForceResetBtn.clicked += OnForceResetClick;
+      m_KillNvimOnQuitTg.SetValueWithoutNotify(NeovimCodeEditor.s_Config.KillNvimOnQuit);
+      m_KillNvimOnQuitTg.RegisterValueChangedCallback(e =>
+      {
+        NeovimCodeEditor.s_Config.KillNvimOnQuit = e.newValue;
+        NeovimCodeEditor.s_Config.Save();
+      });
 
       // csproj generation settings
       {
@@ -478,6 +493,21 @@ namespace Neovim.Editor
 
     private void OnResetClick()
     {
+      NeovimCodeEditor.ResetConfig();
+      SetDirty(false);
+      Close();
+      ShowWindow();
+    }
+
+
+    private void OnKillOrphanedClick()
+    {
+      NeovimCodeEditor.KillOrphanedNvimServers();
+    }
+
+    private void OnForceResetClick()
+    {
+      NeovimCodeEditor.KillNvimServer();
       NeovimCodeEditor.ResetConfig();
       SetDirty(false);
       Close();
