@@ -1,4 +1,4 @@
-#pragma warning disable IDE0130
+#pragma warning disable IDE0130, IDE0300
 using System;
 using System.IO;
 using System.Linq;
@@ -119,27 +119,27 @@ namespace Neovim.Editor
     public static readonly (string, string)[] s_TermLaunchCmds =
 #if UNITY_EDITOR_LINUX
     {
-      ("gnome-terminal", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}"),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}"),
-      ("ptyxis", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}"),
-      ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket}"),
-      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'"),
+      ("gnome-terminal", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("ptyxis", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\"'"),
     };
 #elif UNITY_EDITOR_OSX
     {
-      ("/Applications/kitty.app/Contents/MacOS/kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket}"),
-      ("/Applications/Alacritty.app/Contents/MacOS/alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}"),
-      ("/Applications/ghostty.app/Contents/MacOS/ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'"),
-      ("/Applications/iTerm.app/Contents/MacOS/iTerm2", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}"),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}"),
-      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket}'"),
-      ("kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket}"),
+      ("/Applications/kitty.app/Contents/MacOS/kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("/Applications/Alacritty.app/Contents/MacOS/alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("/Applications/ghostty.app/Contents/MacOS/ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\"'"),
+      ("/Applications/iTerm.app/Contents/MacOS/iTerm2", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\"'"),
+      ("kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
     };
 #else  // UNITY_EDITOR_WIN
     {
       // on Powershell, replace the ';' with "`;"
-      ("wt", "nt {app} {filePath} --listen {serverSocket} ; nt Powershell -File {getProcessPPIDScriptPath}"),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket}")
+      ("wt", "nt {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\" ; nt Powershell -File {getProcessPPIDScriptPath}"),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\"")
     };
 #endif
 
@@ -624,6 +624,7 @@ namespace Neovim.Editor
       string termLaunchArgs = s_Config.TermLaunchArgs;
       string termLaunchEnv = s_Config.TermLaunchEnv;
 
+      // instantiate a new Neovim server instance in case there isn't one running for this Unity session
       if (!IsNvimServerInstanceAlreadyRunning())
       {
         try
@@ -636,6 +637,9 @@ namespace Neovim.Editor
             .Replace("{filePath}", string.IsNullOrWhiteSpace(filePath) ? "" : $"\"{filePath}\"")
             .Replace("{serverSocket}", s_ServerSocket)
             .Replace("{instanceId}", s_InstanceId)
+            .Replace("{projectRootDir}", FileUtility.NormalizeWindowsToUnix(Directory.GetParent(Application.dataPath).ToString()))
+            .Replace("{analyzerDiagnosticScope}", "fullSolution")
+            .Replace("{compilerDiagnosticScope}", "fullSolution")
 #if UNITY_EDITOR_WIN
             .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
 #endif
