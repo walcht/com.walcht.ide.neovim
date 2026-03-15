@@ -1,4 +1,4 @@
-#pragma warning disable IDE0130
+#pragma warning disable IDE0130, IDE0300, IDE0090, IDE0063, IDE0057
 using System;
 using System.IO;
 using UnityEngine;
@@ -64,7 +64,7 @@ namespace Neovim.Editor
       if (!fileName.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
         return null;
 
-      return fileName.Substring(basePath.Length).Trim(Path.DirectorySeparatorChar);//[basePath.Length..].Trim(Path.DirectorySeparatorChar);
+      return fileName.Substring(basePath.Length).Trim(Path.DirectorySeparatorChar);
     }
   }
 }

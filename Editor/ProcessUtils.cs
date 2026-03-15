@@ -1,4 +1,4 @@
-#pragma warning disable IDE0130
+#pragma warning disable IDE0130, IDE0063
 using System;
 using System.IO;
 using System.Diagnostics;

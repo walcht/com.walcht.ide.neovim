@@ -1,4 +1,4 @@
-#pragma warning disable IDE0130, IDE0300
+#pragma warning disable IDE0130, IDE0300, IDE0090, IDE0063, IDE0057
 using System;
 using System.IO;
 using System.Linq;
@@ -599,8 +599,8 @@ namespace Neovim.Editor
       if (string.IsNullOrWhiteSpace(prevAddr)) return false;
 
       int idx = prevAddr.IndexOf(':');
-      string ip = prevAddr.Substring(0, idx);//[..idx];
-      int port = int.Parse(prevAddr.Substring(idx + 1));//[(idx + 1)..]);
+      string ip = prevAddr.Substring(0, idx);
+      int port = int.Parse(prevAddr.Substring(idx + 1));
       return NetUtils.IsPortInUse(ip, port);
 #endif
     }

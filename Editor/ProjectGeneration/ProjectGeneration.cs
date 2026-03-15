@@ -1,4 +1,4 @@
-#pragma warning disable IDE0130
+#pragma warning disable IDE0130, IDE0300, IDE0090, IDE0063, IDE0057
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -550,7 +550,7 @@ namespace Neovim.Editor
         if (argument.Length <= index)
           continue;
 
-        yield return argument.Substring(index + 1).Trim();//[(index + 1)..].Trim();
+        yield return argument.Substring(index + 1).Trim();
       }
     }
 
@@ -961,7 +961,7 @@ namespace Neovim.Editor
     internal static string SkipPathPrefix(string path, string prefix)
     {
       if (path.StartsWith($"{prefix}{Path.DirectorySeparatorChar}") && (path.Length > prefix.Length))
-        return path.Substring(prefix.Length + 1);//[(prefix.Length + 1)..];
+        return path.Substring(prefix.Length + 1);
       return path;
     }
 
@@ -1016,7 +1016,7 @@ namespace Neovim.Editor
 
     private static string HashAsGuid(string hash)
     {
-      var guid = hash.Substring(0, 0) + "-" + hash.Substring(8, 4) + "-" + hash.Substring(12, 4) + "-" + hash.Substring(16, 4) + "-" + hash.Substring(20, 12);
+      var guid = hash.Substring(0, 8) + "-" + hash.Substring(8, 4) + "-" + hash.Substring(12, 4) + "-" + hash.Substring(16, 4) + "-" + hash.Substring(20, 12);
       return guid.ToUpper();
     }
 

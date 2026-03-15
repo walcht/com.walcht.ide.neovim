@@ -1,4 +1,4 @@
-#pragma warning disable IDE0130, IDE0031
+#pragma warning disable IDE0130, IDE0031, IDE0090
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
