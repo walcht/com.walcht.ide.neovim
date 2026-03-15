@@ -64,7 +64,7 @@ namespace Neovim.Editor
       if (!fileName.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
         return null;
 
-      return fileName[basePath.Length..].Trim(Path.DirectorySeparatorChar);
+      return fileName.Substring(basePath.Length).Trim(Path.DirectorySeparatorChar);//[basePath.Length..].Trim(Path.DirectorySeparatorChar);
     }
   }
 }

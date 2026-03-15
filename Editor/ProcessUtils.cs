@@ -41,26 +41,28 @@ namespace Neovim.Editor
     /// <exception cref="TimeoutException">process timed out</exception>
     public static string CmdPath(string cmd, int timeout)
     {
-      using Process p = HeadlessProcess();
+      using (Process p = HeadlessProcess())
+      {
 #if UNITY_EDITOR_WIN
-      // the 'which' cmd equivalent in Windows is 'where.exe'
-      p.StartInfo.FileName = "where.exe";
+        // the 'which' cmd equivalent in Windows is 'where.exe'
+        p.StartInfo.FileName = "where.exe";
 #else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
       p.StartInfo.FileName = "which";
 #endif
-      p.StartInfo.Arguments = cmd;
-      try
-      {
-        p.RunWithAssertion(timeout);
+        p.StartInfo.Arguments = cmd;
+        try
+        {
+          p.RunWithAssertion(timeout);
+        }
+        catch (ExitCodeMismatchException e) when (e.Actual == 1)
+        {
+          return null;
+        }
+        var path = p.StandardOutput.ReadLine();
+        if (!File.Exists(path))
+          return null;
+        return path;
       }
-      catch (ExitCodeMismatchException e) when (e.Actual == 1)
-      {
-        return null;
-      }
-      var path = p.StandardOutput.ReadLine();
-      if (!File.Exists(path))
-        return null;
-      return path;
     }
 
     /// <summary>

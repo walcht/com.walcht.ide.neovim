@@ -8,9 +8,9 @@ namespace Neovim.Editor
   internal static class SolutionParser
   {
     // Compared to the bridge implementation, we are not returning "{" "}" from Guids
-    private static readonly Regex ProjectDeclaration = new(@"Project\(\""{(?<projectFactoryGuid>.*?)}\""\)\s+=\s+\""(?<name>.*?)\"",\s+\""(?<fileName>.*?)\"",\s+\""{(?<projectGuid>.*?)}\""(?<metadata>.*?)\bEndProject\b", RegexOptions.Singleline | RegexOptions.ExplicitCapture | RegexOptions.Compiled);
-    private static readonly Regex PropertiesDeclaration = new(@"GlobalSection\((?<name>([\w]+Properties|NestedProjects))\)\s+=\s+(?<type>(?:post|pre)Solution)(?<entries>.*?)EndGlobalSection", RegexOptions.Singleline | RegexOptions.ExplicitCapture | RegexOptions.Compiled);
-    private static readonly Regex PropertiesEntryDeclaration = new(@"^\s*(?<key>.*?)=(?<value>.*?)$", RegexOptions.Multiline | RegexOptions.ExplicitCapture | RegexOptions.Compiled);
+    private static readonly Regex ProjectDeclaration = new Regex(@"Project\(\""{(?<projectFactoryGuid>.*?)}\""\)\s+=\s+\""(?<name>.*?)\"",\s+\""(?<fileName>.*?)\"",\s+\""{(?<projectGuid>.*?)}\""(?<metadata>.*?)\bEndProject\b", RegexOptions.Singleline | RegexOptions.ExplicitCapture | RegexOptions.Compiled);
+    private static readonly Regex PropertiesDeclaration = new Regex(@"GlobalSection\((?<name>([\w]+Properties|NestedProjects))\)\s+=\s+(?<type>(?:post|pre)Solution)(?<entries>.*?)EndGlobalSection", RegexOptions.Singleline | RegexOptions.ExplicitCapture | RegexOptions.Compiled);
+    private static readonly Regex PropertiesEntryDeclaration = new Regex(@"^\s*(?<key>.*?)=(?<value>.*?)$", RegexOptions.Multiline | RegexOptions.ExplicitCapture | RegexOptions.Compiled);
 
     public static Solution ParseSolutionFile(string filename)
     {

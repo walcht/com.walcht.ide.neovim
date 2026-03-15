@@ -21,7 +21,7 @@ namespace Neovim.Editor
     static readonly string[] _supportedFileNames = { "nvim", "nvim.exe" };
     static bool s_WindowFocusingAvailable = false;
 
-    public static NeovimEditorConfig s_Config = new();
+    public static NeovimEditorConfig s_Config = new NeovimEditorConfig();
 
     // Unique identifier for this Unity instance (PID)
     public static readonly string s_InstanceId = Process.GetCurrentProcess().Id.ToString();
@@ -113,33 +113,45 @@ namespace Neovim.Editor
     // terminal launch command template - use this template for adding new launch cmds
     public static readonly (string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}");
 
-    // list of neovim launch cmds from popular terminal emulators - this is
-    // just a hardcoded list so that non-tech-savy users can just get to
-    // using Neovim with minimal friction.
+    /// <summary>
+    /// Command that is passed to the Neovim server instance once it is instantiated. The variables here make sense
+    /// only if you are using CGNvim's Roslyn LS configuration (at https://github.com/walcht/CGNvim).
+    /// In case you are not, see how CGNvim uses them and implement them in your config.
+    /// </summary>
+    private static readonly string s_NvimCmdString = string.Join("", new string[] {
+      "--cmd \"",
+      ":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}';",
+      "_G.nvim_unity_analyzer_diagnostic_scope='{analyzerDiagnosticScope}';",
+      "_G.nvim_unity_compiler_diagnostic_scope='{compilerDiagnosticScope}'\"" });
+
+    /// <summary>
+    /// List of neovim launch cmds from popular terminal emulators - this is just a hardcoded list so that non-tech-savy
+    /// users can just get to using Neovim with minimal friction.
+    /// </summary>
     public static readonly (string, string)[] s_TermLaunchCmds =
 #if UNITY_EDITOR_LINUX
     {
-      ("gnome-terminal", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
-      ("ptyxis", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
-      ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
-      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\"'"),
+      ("gnome-terminal", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} " + s_NvimCmdString ),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      ("ptyxis", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
     };
 #elif UNITY_EDITOR_OSX
     {
-      ("/Applications/kitty.app/Contents/MacOS/kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
-      ("/Applications/Alacritty.app/Contents/MacOS/alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
-      ("/Applications/ghostty.app/Contents/MacOS/ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\"'"),
-      ("/Applications/iTerm.app/Contents/MacOS/iTerm2", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
-      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\"'"),
-      ("kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\""),
+      ("/Applications/kitty.app/Contents/MacOS/kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      ("/Applications/Alacritty.app/Contents/MacOS/alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      ("/Applications/ghostty.app/Contents/MacOS/ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} " + s_NvimCmdString + "'"),
+      ("/Applications/iTerm.app/Contents/MacOS/iTerm2", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} " + s_NvimCmdString + "'"),
+      ("kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
     };
 #else  // UNITY_EDITOR_WIN
     {
       // on Powershell, replace the ';' with "`;"
-      ("wt", "nt {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\" ; nt Powershell -File {getProcessPPIDScriptPath}"),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} --cmd \":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'\"")
+      ("wt", "nt {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString)
     };
 #endif
 
@@ -223,7 +235,7 @@ namespace Neovim.Editor
           Debug.LogError($"[neovim.ide] open-file template list is empty");
         }
         s_Config.ModifierBindings = new System.Collections.Generic.List<ModifierBinding> {
-          new() { Modifiers = 0, Args = s_OpenFileArgsTemplates[0].Args }
+          new ModifierBinding() { Modifiers = 0, Args = s_OpenFileArgsTemplates[0].Args }
         };
         s_Config.Save();
       }
@@ -246,16 +258,18 @@ namespace Neovim.Editor
     {
       // get Neovim installation version
       string version = "v-unknown";
-      using var proc = ProcessUtils.HeadlessProcess();
-      proc.StartInfo.FileName = p;
-      proc.StartInfo.Arguments = "--version";
-      proc.RunWithAssertion(s_Config.ProcessTimeout);
-      var line = proc.StandardOutput.ReadLine();
-      if (line != null)
+      using (var proc = ProcessUtils.HeadlessProcess())
       {
-        version = line[(line.IndexOf(' ') + 1)..];
+        proc.StartInfo.FileName = p;
+        proc.StartInfo.Arguments = "--version";
+        proc.RunWithAssertion(s_Config.ProcessTimeout);
+        var line = proc.StandardOutput.ReadLine();
+        if (line != null)
+        {
+          version = line.Substring(line.IndexOf(' ') + 1);
+        }
+        return version;
       }
-      return version;
     }
 
     // because of the "InitializeOnLoad" attribute, this will be called when scripts in the project are recompiled
@@ -276,7 +290,7 @@ namespace Neovim.Editor
         if (File.Exists(s_Config.NvimExecutablePath)
             && (v = GetNeovimVersion(s_Config.NvimExecutablePath)) != "v-unknown")
         {
-          s_DiscoveredNeovimInstallations = new CodeEditor.Installation[] { new() {
+          s_DiscoveredNeovimInstallations = new CodeEditor.Installation[] { new CodeEditor.Installation() {
             Name = $"Neovim {v}",
             Path = s_Config.NvimExecutablePath
           }};
@@ -384,7 +398,7 @@ namespace Neovim.Editor
       s_WindowFocusingAvailable = true;
 #endif
 
-      NeovimCodeEditor editor = new(s_Generator);
+      NeovimCodeEditor editor = new NeovimCodeEditor(s_Generator);
       CodeEditor.Register(editor);
     }
 
@@ -585,8 +599,8 @@ namespace Neovim.Editor
       if (string.IsNullOrWhiteSpace(prevAddr)) return false;
 
       int idx = prevAddr.IndexOf(':');
-      string ip = prevAddr[..idx];
-      int port = int.Parse(prevAddr[(idx + 1)..]);
+      string ip = prevAddr.Substring(0, idx);//[..idx];
+      int port = int.Parse(prevAddr.Substring(idx + 1));//[(idx + 1)..]);
       return NetUtils.IsPortInUse(ip, port);
 #endif
     }
@@ -629,89 +643,96 @@ namespace Neovim.Editor
       {
         try
         {
-          using Process p = new();
-          p.StartInfo.FileName = termLaunchCmd
-            .Replace("{app}", app);
-          p.StartInfo.Arguments = termLaunchArgs
-            .Replace("{app}", app)
-            .Replace("{filePath}", string.IsNullOrWhiteSpace(filePath) ? "" : $"\"{filePath}\"")
-            .Replace("{serverSocket}", s_ServerSocket)
-            .Replace("{instanceId}", s_InstanceId)
-            .Replace("{projectRootDir}", FileUtility.NormalizeWindowsToUnix(Directory.GetParent(Application.dataPath).ToString()))
-            .Replace("{analyzerDiagnosticScope}", "fullSolution")
-            .Replace("{compilerDiagnosticScope}", "fullSolution")
-#if UNITY_EDITOR_WIN
-            .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
-#endif
-          ;
-
-          // pass optionally-set environment variables to process
-          if (!string.IsNullOrWhiteSpace(termLaunchEnv))
+          using (var p = new Process())
           {
-            foreach (var env in termLaunchEnv.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            p.StartInfo.FileName = termLaunchCmd
+              .Replace("{app}", app);
+            p.StartInfo.Arguments = termLaunchArgs
+              .Replace("{app}", app)
+              .Replace("{filePath}", string.IsNullOrWhiteSpace(filePath) ? "" : $"\"{filePath}\"")
+              .Replace("{serverSocket}", s_ServerSocket)
+              .Replace("{instanceId}", s_InstanceId)
+              .Replace("{projectRootDir}", FileUtility.NormalizeWindowsToUnix(Directory.GetParent(Application.dataPath).ToString()))
+              .Replace("{analyzerDiagnosticScope}", "fullSolution")
+              .Replace("{compilerDiagnosticScope}", "fullSolution")
+#if UNITY_EDITOR_WIN
+              .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
+#endif
+            ;
+
+            // pass optionally-set environment variables to process
+            if (!string.IsNullOrWhiteSpace(termLaunchEnv))
             {
-              var envKey = env.Split('=', 2);
-              if (envKey.Length == 2)
+              foreach (var env in termLaunchEnv.Split(' ', StringSplitOptions.RemoveEmptyEntries))
               {
-                p.StartInfo.Environment[envKey[0]] = envKey[1];
-              }
-              else
-              {
-                Debug.LogWarning($"[neovim.ide] failed to parse environment variable entry from: {env}. Expected format is: ENV=VALUE");
+                var envKey = env.Split('=', 2);
+                if (envKey.Length == 2)
+                {
+                  p.StartInfo.Environment[envKey[0]] = envKey[1];
+                }
+                else
+                {
+                  Debug.LogWarning($"[neovim.ide] failed to parse environment variable entry from: {env}. Expected format is: ENV=VALUE");
+                }
               }
             }
-          }
 
-          p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
-          p.StartInfo.CreateNoWindow = false;
-          p.StartInfo.UseShellExecute = false;
-          // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
+            p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
+            p.StartInfo.CreateNoWindow = false;
+            p.StartInfo.UseShellExecute = false;
+            // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
 
-          // start and do not care (do not wait for exit)
-          p.Start();
+            // start and do not care (do not wait for exit)
+            p.Start();
+
 
 #if UNITY_EDITOR_WIN
 
-          // save the server socket so that we can communicate with it later
-          // (e.g., when Unity exits but the server is still running)
-          s_Config.PrevServerSocket = s_ServerSocket;
-          s_Config.Save();
-
-          // the idea here is to figure out the handle of the process running the Neovim server instance
-          // this is a bit tricky on Windows - because depending on the terminal launch cmd, it might
-          // spawn a child process or it might not.
-          //
-          // first - we assume that the terminal launch cmd's process is the one that has Neovim server
-          // open (i.e., no child process)
-          int process_startup_timeout = 1000;
-          try
-          {
-            IntPtr wh = ProcessUtils.GetWindowHandle(p, process_startup_timeout);
-            s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
+            // save the server socket so that we can communicate with it later
+            // (e.g., when Unity exits but the server is still running)
+            s_Config.PrevServerSocket = s_ServerSocket;
             s_Config.Save();
-          }
-          // this probably means that the terminal launch cmd spawns a new child instance that is responsible for the Neovim window
-          catch (InvalidOperationException)
-          {
-            // pipe's name should be the same as in "GetProcessPPID.ps1" script
-            using var pipeClient = new NamedPipeClientStream(".", @"\\.\pipe\getprocessppidpipe", PipeDirection.In);
-            pipeClient.Connect(1000);
-            using var _sr = new StreamReader(pipeClient);
-            string ppidStr = _sr.ReadLine() ?? throw new Exception("PPID received string is null");
-            var ppid = int.Parse(ppidStr);
 
-            Process neovimServerProcess = Process.GetProcessById(ppid);
-            IntPtr wh = ProcessUtils.GetWindowHandle(neovimServerProcess, process_startup_timeout);
-            s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
-            s_Config.Save();
-          }
-          catch (Exception)
-          {
-            s_WindowFocusingAvailable = false;
-            Debug.LogWarning($"[neovim.ide] failed to get the PID of the window responsible for the Neovim server instance."
-                + " Auto window focusing is disabled");
-          }
+            // the idea here is to figure out the handle of the process running the Neovim server instance
+            // this is a bit tricky on Windows - because depending on the terminal launch cmd, it might
+            // spawn a child process or it might not.
+            //
+            // first - we assume that the terminal launch cmd's process is the one that has Neovim server
+            // open (i.e., no child process)
+            int process_startup_timeout = 1000;
+            try
+            {
+              IntPtr wh = ProcessUtils.GetWindowHandle(p, process_startup_timeout);
+              s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
+              s_Config.Save();
+            }
+            // this probably means that the terminal launch cmd spawns a new child instance that is responsible for the Neovim window
+            catch (InvalidOperationException)
+            {
+              // pipe's name should be the same as in "GetProcessPPID.ps1" script
+              using (var pipeClient = new NamedPipeClientStream(".", @"\\.\pipe\getprocessppidpipe", PipeDirection.In))
+              {
+                pipeClient.Connect(1000);
+                using (var _sr = new StreamReader(pipeClient))
+                {
+                  string ppidStr = _sr.ReadLine() ?? throw new Exception("PPID received string is null");
+                  var ppid = int.Parse(ppidStr);
+
+                  Process neovimServerProcess = Process.GetProcessById(ppid);
+                  IntPtr wh = ProcessUtils.GetWindowHandle(neovimServerProcess, process_startup_timeout);
+                  s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
+                  s_Config.Save();
+                }
+              }
+            }
+            catch (Exception)
+            {
+              s_WindowFocusingAvailable = false;
+              Debug.LogWarning($"[neovim.ide] failed to get the PID of the window responsible for the Neovim server instance."
+                  + " Auto window focusing is disabled");
+            }
 #endif
+          }
         }
         catch (Exception e)
         {
@@ -744,17 +765,18 @@ namespace Neovim.Editor
           .Replace("{serverSocket}", s_ServerSocket)
           .Replace("{filePath}", $"\"{filePath}\"");
 
-        using var p = ProcessUtils.HeadlessProcess();
-        p.StartInfo.FileName = app;
-        p.StartInfo.Arguments = args;
-#if UNITY_EDITOR_WIN
-        // on Windows, for some reason the process executes correctly but without exiting within any given timeout
-        // to fix that, we simply catch the TimeoutException and kill the process.
-        try
+        using (var p = ProcessUtils.HeadlessProcess())
         {
-          p.RunWithAssertion(s_Config.ProcessTimeout);
-        }
-        catch (TimeoutException) { }
+          p.StartInfo.FileName = app;
+          p.StartInfo.Arguments = args;
+#if UNITY_EDITOR_WIN
+          // on Windows, for some reason the process executes correctly but without exiting within any given timeout
+          // to fix that, we simply catch the TimeoutException and kill the process.
+          try
+          {
+            p.RunWithAssertion(s_Config.ProcessTimeout);
+          }
+          catch (TimeoutException) { }
 #else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
         // life is ez on Linux (unless you deal with any window manager...)
         try
@@ -767,6 +789,7 @@ namespace Neovim.Editor
         }
         catch (TimeoutException) { }
 #endif
+        }
       }
 
       /*
@@ -781,15 +804,16 @@ namespace Neovim.Editor
           .Replace("{line}", line.ToString())
           .Replace("{column}", column.ToString());
 
-        using var p = ProcessUtils.HeadlessProcess();
-        p.StartInfo.FileName = app;
-        p.StartInfo.Arguments = args;
-#if UNITY_EDITOR_WIN
-        try
+        using (var p = ProcessUtils.HeadlessProcess())
         {
-          p.RunWithAssertion(s_Config.ProcessTimeout);
-        }
-        catch (TimeoutException) { }
+          p.StartInfo.FileName = app;
+          p.StartInfo.Arguments = args;
+#if UNITY_EDITOR_WIN
+          try
+          {
+            p.RunWithAssertion(s_Config.ProcessTimeout);
+          }
+          catch (TimeoutException) { }
 #else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
         try
         {
@@ -798,6 +822,7 @@ namespace Neovim.Editor
         catch (ExitCodeMismatchException) { }
         catch (TimeoutException) { }
 #endif
+        }
       }
 
       // optionally focus on Neovim - this is extremely tricky to implement across platforms
@@ -863,12 +888,47 @@ namespace Neovim.Editor
           break;
       }
 #elif UNITY_EDITOR_WIN
-      IntPtr windowHandle = new(Convert.ToInt64(s_Config.PrevServerProcessIntPtrStringRepr));
+      IntPtr windowHandle = new IntPtr(Convert.ToInt64(s_Config.PrevServerProcessIntPtrStringRepr));
       ShowWindow(windowHandle, 5);  // 5 == Activates the window and displays it in its current size and position
       SetForegroundWindow(windowHandle);
 #endif
 
       return true;
+    }
+
+
+    public static string SetAnalyzerDiagnosticScope(string scope) => s_Config.AnalyzerDiagnosticScope = scope;
+    public static string SetCompilerDiagnosticScope(string scope) => s_Config.CompilerDiagnosticScope = scope;
+
+    public static void RestartRoslynLS()
+    {
+
+      string app = $"\"{CodeEditor.CurrentEditorPath}\"";
+      using (var p = ProcessUtils.HeadlessProcess())
+      {
+        p.StartInfo.FileName = app;
+        p.StartInfo.Arguments = "--cmd \"\"";
+#if UNITY_EDITOR_WIN
+        // on Windows, for some reason the process executes correctly but without exiting within any given timeout
+        // to fix that, we simply catch the TimeoutException and kill the process.
+        try
+        {
+          p.RunWithAssertion(s_Config.ProcessTimeout);
+        }
+        catch (TimeoutException) { }
+#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+        // life is ez on Linux (unless you deal with any window manager...)
+        try
+        {
+          p.RunWithAssertion(s_Config.ProcessTimeout);
+        }
+        catch (ExitCodeMismatchException e)
+        {
+          Debug.LogWarning($"[neovim.ide] . Is the server running?");
+        }
+        catch (TimeoutException) { }
+#endif
+      }
     }
   }
 }

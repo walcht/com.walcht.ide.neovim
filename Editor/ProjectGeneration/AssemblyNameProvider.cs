@@ -28,7 +28,7 @@ namespace Neovim.Editor
     internal static readonly string s_AssemblyOutput = @"Temp\bin\Debug\".NormalizePathSeparators();
     internal static readonly string s_PlayerAssemblyOutput = @"Temp\bin\Debug\Player\".NormalizePathSeparators();
 
-    private readonly Dictionary<string, UnityEditor.PackageManager.PackageInfo> m_PackageInfoCache = new();
+    private readonly Dictionary<string, UnityEditor.PackageManager.PackageInfo> m_PackageInfoCache = new Dictionary<string, UnityEditor.PackageManager.PackageInfo>();
     private ProjectGenerationFlag m_CsprojFlags = ProjectGenerationFlag.None;
 
     public string[] ProjectSupportedExtensions => EditorSettings.projectGenerationUserExtensions;
@@ -111,7 +111,7 @@ namespace Neovim.Editor
         return assetPath.ToLowerInvariant();
       }
 
-      return assetPath[..followupSeparator].ToLowerInvariant();
+      return assetPath.Substring(0, followupSeparator).ToLowerInvariant();//[..followupSeparator].ToLowerInvariant();
     }
 
     public UnityEditor.PackageManager.PackageInfo FindForAssetPath(string assetPath)

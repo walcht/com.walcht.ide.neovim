@@ -64,7 +64,7 @@ namespace Neovim.Editor
     ////////////////////////////////////////////////////////////////////////////
     // Open-file-request args
     ////////////////////////////////////////////////////////////////////////////
-    private static readonly Dictionary<string, int> s_OpenFileModifiers = new()
+    private static readonly Dictionary<string, int> s_OpenFileModifiers = new Dictionary<string, int>()
     {
       ["SHIFT"] = (int)EventModifiers.Shift,
       ["CTRL"] = (int)EventModifiers.Control,
@@ -97,6 +97,12 @@ namespace Neovim.Editor
     private VisualElement m_AnalyzerRows;
     private VisualElement m_AnalyzerRowsParent;
 
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Roslyn LS Settings
+    ////////////////////////////////////////////////////////////////////////////
+    private DropdownField m_AnalyzerDiagnosticScopeDd;
+    private DropdownField m_CompilerDiagnosticScopeDd;
 
     // TODO: persistent window position
     static NeovimSettingsWindow()
@@ -379,6 +385,28 @@ namespace Neovim.Editor
         RebuildAnalyzerRows();
       }
 
+      // Roslyn LS settings
+      {
+        m_AnalyzerDiagnosticScopeDd = mainPanel.Q<DropdownField>("analyzer-diagnostic-scope-dd");
+        m_CompilerDiagnosticScopeDd = mainPanel.Q<DropdownField>("compiler-diagnostic-scope-dd");
+        m_AnalyzerDiagnosticScopeDd.SetValueWithoutNotify(NeovimCodeEditor.s_Config.AnalyzerDiagnosticScope);
+        m_CompilerDiagnosticScopeDd.SetValueWithoutNotify(NeovimCodeEditor.s_Config.CompilerDiagnosticScope);
+
+        m_AnalyzerDiagnosticScopeDd.RegisterValueChangedCallback(e =>
+        {
+          if (e.newValue == NeovimCodeEditor.s_Config.AnalyzerDiagnosticScope)
+            return;
+          SetDirty(true);
+        });
+
+        m_CompilerDiagnosticScopeDd.RegisterValueChangedCallback(e =>
+        {
+          if (e.newValue == NeovimCodeEditor.s_Config.CompilerDiagnosticScope)
+            return;
+          SetDirty(true);
+        });
+      }
+
       // info panel (right panel)
       {
         m_InfoName = mainPanel.Q<Label>("curr-template-name");
@@ -435,6 +463,10 @@ namespace Neovim.Editor
 
       // update process timeout
       m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.ProcessTimeout = m_ProcessTimeoutIf.value);
+
+      // Roslyn LS settings
+      m_AnalyzerDiagnosticScopeDd.SetValueWithoutNotify(NeovimCodeEditor.SetAnalyzerDiagnosticScope(m_AnalyzerDiagnosticScopeDd.value));
+      m_CompilerDiagnosticScopeDd.SetValueWithoutNotify(NeovimCodeEditor.SetCompilerDiagnosticScope(m_CompilerDiagnosticScopeDd.value));
 
       // serialize the config shit
       NeovimCodeEditor.s_Config.Save();

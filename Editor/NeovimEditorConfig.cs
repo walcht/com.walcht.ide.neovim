@@ -144,7 +144,7 @@ namespace Neovim.Editor
       }
     }
 
-    private List<ModifierBinding> m_ModifierBindings = new();
+    private List<ModifierBinding> m_ModifierBindings = new List<ModifierBinding>();
     public List<ModifierBinding> ModifierBindings
     {
       get => m_ModifierBindings;
@@ -196,13 +196,40 @@ namespace Neovim.Editor
     }
 #endif
 
-    private List<string> m_Analyzers = new();
+    private List<string> m_Analyzers = new List<string>();
     public List<string> Analyzers
     {
       get => m_Analyzers;
       set
       {
         m_Analyzers = value;
+        m_Dirty = true;
+      }
+    }
+
+    private string m_analyzerDiagnosticScope = "openFiles";
+    public string AnalyzerDiagnosticScope
+    {
+      get => m_analyzerDiagnosticScope;
+      set
+      {
+        if (value == m_analyzerDiagnosticScope)
+          return;
+        m_analyzerDiagnosticScope = value;
+        m_Dirty = true;
+      }
+    }
+
+
+    private string m_compilerDiagnosticScope = "openFiles";
+    public string CompilerDiagnosticScope
+    {
+      get => m_compilerDiagnosticScope;
+      set
+      {
+        if (value == m_compilerDiagnosticScope)
+          return;
+        m_compilerDiagnosticScope = value;
         m_Dirty = true;
       }
     }

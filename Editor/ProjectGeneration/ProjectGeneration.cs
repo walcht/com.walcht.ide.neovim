@@ -53,9 +53,9 @@ namespace Neovim.Editor
 
     static readonly string[] k_ReimportSyncExtensions = { ".dll", ".asmdef" };
 
-    HashSet<string> m_ProjectSupportedExtensions = new();
-    HashSet<string> m_BuiltinSupportedExtensions = new();
-    readonly HashSet<string> m_DefaultSupportedExtensions = new(new string[] { "dll", "asmdef", "additionalfile" });
+    HashSet<string> m_ProjectSupportedExtensions = new HashSet<string>();
+    HashSet<string> m_BuiltinSupportedExtensions = new HashSet<string>();
+    readonly HashSet<string> m_DefaultSupportedExtensions = new HashSet<string>(new string[] { "dll", "asmdef", "additionalfile" });
 
     readonly string m_ProjectName;
     internal readonly IAssemblyNameProvider m_AssemblyNameProvider;
@@ -169,7 +169,7 @@ namespace Neovim.Editor
       }
     }
 
-    static readonly ProfilerMarker solutionSyncMarker = new("SolutionSynchronizerSync");
+    static readonly ProfilerMarker solutionSyncMarker = new ProfilerMarker("SolutionSynchronizerSync");
 
     public void Sync()
     {
@@ -304,7 +304,7 @@ namespace Neovim.Editor
 
     private Dictionary<string, string> GenerateAllAssetProjectParts()
     {
-      Dictionary<string, StringBuilder> stringBuilders = new();
+      Dictionary<string, StringBuilder> stringBuilders = new Dictionary<string, StringBuilder>();
 
       foreach (string asset in m_AssemblyNameProvider.GetAllAssetPaths())
       {
@@ -513,7 +513,7 @@ namespace Neovim.Editor
     }
 
 #if UNITY_EDITOR_WIN
-    private static readonly Regex InvalidCharactersRegexPattern = new(@"\?|&|\*|""|<|>|\||#|%|\^|;", RegexOptions.Compiled);
+    private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;", RegexOptions.Compiled);
 #else
     private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;|:", RegexOptions.Compiled);
 #endif
@@ -542,7 +542,7 @@ namespace Neovim.Editor
         if (index == -1)
           continue;
 
-        var key = argument[1..index].Trim();
+        var key = argument.Substring(1, index).Trim();//[1..index].Trim();
 
         if (!names.Contains(key))
           continue;
@@ -550,7 +550,7 @@ namespace Neovim.Editor
         if (argument.Length <= index)
           continue;
 
-        yield return argument[(index + 1)..].Trim();
+        yield return argument.Substring(index + 1).Trim();//[(index + 1)..].Trim();
       }
     }
 
@@ -861,7 +861,7 @@ namespace Neovim.Editor
                     new SolutionProperties() {
                         Name = "SolutionProperties",
                         Type = "preSolution",
-                        Entries = new List<KeyValuePair<string,string>>() { new("HideSolutionNode", "FALSE") }
+                        Entries = new List<KeyValuePair<string,string>>() { new KeyValuePair<string, string>("HideSolutionNode", "FALSE") }
                     }
                 };
       }
@@ -961,7 +961,7 @@ namespace Neovim.Editor
     internal static string SkipPathPrefix(string path, string prefix)
     {
       if (path.StartsWith($"{prefix}{Path.DirectorySeparatorChar}") && (path.Length > prefix.Length))
-        return path[(prefix.Length + 1)..];
+        return path.Substring(prefix.Length + 1);//[(prefix.Length + 1)..];
       return path;
     }
 
@@ -1016,7 +1016,7 @@ namespace Neovim.Editor
 
     private static string HashAsGuid(string hash)
     {
-      var guid = hash[..8] + "-" + hash.Substring(8, 4) + "-" + hash.Substring(12, 4) + "-" + hash.Substring(16, 4) + "-" + hash.Substring(20, 12);
+      var guid = hash.Substring(0, 0) + "-" + hash.Substring(8, 4) + "-" + hash.Substring(12, 4) + "-" + hash.Substring(16, 4) + "-" + hash.Substring(20, 12);
       return guid.ToUpper();
     }
 
