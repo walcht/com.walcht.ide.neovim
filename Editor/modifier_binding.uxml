@@ -1,10 +1,10 @@
-<ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+<ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
     <ui:VisualElement name="VisualElement" style="flex-grow: 1; border-left-color: rgb(77, 77, 77); border-right-color: rgb(77, 77, 77); border-top-color: rgb(77, 77, 77); border-bottom-color: rgb(77, 77, 77); border-top-width: 1px; border-right-width: 0; border-bottom-width: 0; border-left-width: 0; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px;">
-        <ui:VisualElement name="header-row" style="flex-grow: 0; flex-direction: row; flex-shrink: 0; justify-content: space-between; align-self: auto; align-content: flex-start; align-items: stretch; margin-bottom: 4px;">
-            <ui:DropdownField label="modifiers:" name="modifiers-dd" tooltip="Binding modifier that will trigger the following command when clicked while opening a file from Unity."/>
-            <ui:Button text="X" name="delete-btn" style="aspect-ratio: auto; align-content: flex-start; justify-content: flex-start; align-self: auto; -unity-text-align: middle-center; white-space: nowrap; text-overflow: clip; color: rgb(229, 229, 229); -unity-font-style: bold;"/>
+        <ui:VisualElement name="header-row" style="flex-grow: 0; flex-direction: row; flex-shrink: 0; justify-content: space-between; align-self: auto; align-content: flex-start; align-items: stretch; margin-bottom: 0; margin-top: 0; margin-right: 0; margin-left: 0;">
+            <ui:VisualElement name="modifiers-dd" tooltip="Binding modifier that will trigger the following command when clicked while opening a file from Unity."/>
+            <ui:Button text="X" name="delete-btn" style="aspect-ratio: auto; align-content: flex-start; justify-content: flex-start; align-self: auto; -unity-text-align: middle-center; white-space: nowrap; text-overflow: clip; color: rgb(229, 229, 229); -unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0;"/>
         </ui:VisualElement>
-        <ui:DropdownField label="" name="templates-dd" style="margin-top: 0; margin-right: 0; margin-bottom: 4px; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;"/>
-        <ui:TextField label="" placeholder-text="" name="args-tf"/>
+        <ui:VisualElement name="templates-dd" style="margin-top: 0; margin-right: 0; margin-bottom: 4px; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;"/>
+        <ui:TextField label="" placeholder-text="" name="args-tf" style="margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0;"/>
     </ui:VisualElement>
 </ui:UXML>

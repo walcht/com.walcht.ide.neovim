@@ -176,7 +176,7 @@ namespace Neovim.Editor
      // make sure to include the extension in the executalbe's name!
      {
        "nvim.exe",  // powershell bitches about missing .exe extension
-       Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Path.Join("Neovim", "bin", "nvim.exe")),
+       Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Neovim", "bin", "nvim.exe"),
      };
 #endif
 
@@ -428,13 +428,13 @@ namespace Neovim.Editor
     }
 #endif
 
-    public static bool TryChangeTermLaunchCmd(string cmd, string args, string env = null)
+    public static bool TryChangeTermLaunchCmd(string cmd, string args, string env = "")
     {
       if (cmd.Contains("{app}"))  // in case the Neovim executable is invoked directly
       {
-        cmd = cmd.Replace("{app}", CodeEditor.CurrentEditorPath);
-        if (!File.Exists(CodeEditor.CurrentEditorPath))
+        if (!File.Exists(s_Config.NvimExecutablePath))
           return false;
+        cmd = cmd.Replace("{app}", s_Config.NvimExecutablePath);
       }
       else  // or through terminal
       {
@@ -453,7 +453,7 @@ namespace Neovim.Editor
       s_Config.TermLaunchEnv = env;
 
 #if UNITY_EDITOR_WIN
-      s_Config.PrevServerSocket = null;
+      s_Config.PrevServerSocket = string.Empty;
 #endif
 
       s_Config.Save();
@@ -496,7 +496,7 @@ namespace Neovim.Editor
       {
         // Debug.Log($"[neovim.ide] added analyzer: {Path.GetFileName(path)}");
         s_Config.Save();
-        CodeEditor.Editor.CurrentCodeEditor.SyncAll();
+        Sync();
         return true;
       }
       return false;
@@ -578,6 +578,12 @@ namespace Neovim.Editor
       s_Generator.Sync();
     }
 
+    public static void Sync()
+    {
+      AssetDatabase.Refresh();
+      s_Generator.Sync();
+    }
+
 
     /// <summary>
     /// Checks if an nvim server instance is currently running (for this or previous Unity session) by checking
@@ -617,7 +623,7 @@ namespace Neovim.Editor
 
       // we want to return false in case a different editor is supplied (e.g., code.cmd for VSCode)
       if (!Array.Exists(_supportedFileNames, fn =>
-            string.Compare(fn, Path.GetFileName(CodeEditor.CurrentEditorPath), StringComparison.OrdinalIgnoreCase) == 0))
+            string.Compare(fn, Path.GetFileName(s_Config.NvimExecutablePath), StringComparison.OrdinalIgnoreCase) == 0))
         return false;
 
       // only use NeoVim for reasonable file extensions (e.g., do not use NeoVim to open .png files which happens
@@ -628,9 +634,9 @@ namespace Neovim.Editor
         return false;
 
 #if UNITY_EDITOR_WIN
-      string app = $"\"{CodeEditor.CurrentEditorPath}\"";
+      string app = $"\"{s_Config.NvimExecutablePath}\"";
 #else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-      string app = CodeEditor.CurrentEditorPath;
+      string app = s_Config.NvimExecutablePath;
 #endif
 
       // get terminal launch cmd and its args from Unity editor preferences
@@ -653,8 +659,8 @@ namespace Neovim.Editor
               .Replace("{serverSocket}", s_ServerSocket)
               .Replace("{instanceId}", s_InstanceId)
               .Replace("{projectRootDir}", FileUtility.NormalizeWindowsToUnix(Directory.GetParent(Application.dataPath).ToString()))
-              .Replace("{analyzerDiagnosticScope}", "fullSolution")
-              .Replace("{compilerDiagnosticScope}", "fullSolution")
+              .Replace("{analyzerDiagnosticScope}", s_Config.AnalyzerDiagnosticScope.ToString())
+              .Replace("{compilerDiagnosticScope}", s_Config.CompilerDiagnosticScope.ToString())
 #if UNITY_EDITOR_WIN
               .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
 #endif
@@ -663,9 +669,9 @@ namespace Neovim.Editor
             // pass optionally-set environment variables to process
             if (!string.IsNullOrWhiteSpace(termLaunchEnv))
             {
-              foreach (var env in termLaunchEnv.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+              foreach (var env in termLaunchEnv.Split(' '))
               {
-                var envKey = env.Split('=', 2);
+                var envKey = env.Split('=');
                 if (envKey.Length == 2)
                 {
                   p.StartInfo.Environment[envKey[0]] = envKey[1];
@@ -897,13 +903,16 @@ namespace Neovim.Editor
     }
 
 
-    public static string SetAnalyzerDiagnosticScope(string scope) => s_Config.AnalyzerDiagnosticScope = scope;
-    public static string SetCompilerDiagnosticScope(string scope) => s_Config.CompilerDiagnosticScope = scope;
+    public static RoslynDiagnosticScope SetAnalyzerDiagnosticScope(RoslynDiagnosticScope scope)
+      => s_Config.AnalyzerDiagnosticScope = scope;
+
+    public static RoslynDiagnosticScope SetCompilerDiagnosticScope(RoslynDiagnosticScope scope)
+      => s_Config.CompilerDiagnosticScope = scope;
 
     public static void RestartRoslynLS()
     {
 
-      string app = $"\"{CodeEditor.CurrentEditorPath}\"";
+      string app = $"\"{s_Config.NvimExecutablePath}\"";
       using (var p = ProcessUtils.HeadlessProcess())
       {
         p.StartInfo.FileName = app;

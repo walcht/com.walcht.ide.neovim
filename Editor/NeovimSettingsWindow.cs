@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
+using UnityEditor.UIElements;  // for EnumField in older Unity versions (e.g., Unity 2020.3)
 using Unity.CodeEditor;
 using System.Linq;
 using System.Collections.Generic;
@@ -101,8 +102,8 @@ namespace Neovim.Editor
     ////////////////////////////////////////////////////////////////////////////
     // Roslyn LS Settings
     ////////////////////////////////////////////////////////////////////////////
-    private DropdownField m_AnalyzerDiagnosticScopeDd;
-    private DropdownField m_CompilerDiagnosticScopeDd;
+    private EnumField m_AnalyzerDiagnosticScopeEf;
+    private EnumField m_CompilerDiagnosticScopeEf;
 
     // TODO: persistent window position
     static NeovimSettingsWindow()
@@ -140,11 +141,12 @@ namespace Neovim.Editor
       base.SaveChanges();
     }
 
-
+#if UNITY_2022_2_OR_NEWER
     public override void DiscardChanges()
     {
       base.DiscardChanges();
     }
+#endif
 
 
     private void SetDirty(bool val)
@@ -234,16 +236,18 @@ namespace Neovim.Editor
 
       // terminal launch cmd args
       {
-        var termLaunchDf = mainPanel.Q<DropdownField>("terminal-launch-templates-dd");
+        var termLaunchContainer = mainPanel.Q<VisualElement>("terminal-launch-cmd-args");
+        var termLaunchDf = new PopupField<string>("template:", s_TermLaunchCmdTemplateNames, 0);
+        termLaunchContainer.Add(termLaunchDf);
+
         m_TermLaunchCmdTf = mainPanel.Q<TextField>("terminal-launch-cmd-tf");
         m_TermLaunchArgsTf = mainPanel.Q<TextField>("terminal-launch-args-tf");
         m_TermLaunchEnvTf = mainPanel.Q<TextField>("terminal-launch-env-tf");
-        termLaunchDf.choices = s_TermLaunchCmdTemplateNames;
-        termLaunchDf.SetValueWithoutNotify("select template");
         m_TermLaunchCmdTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchCmd);
         m_TermLaunchArgsTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchArgs);
         m_TermLaunchEnvTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchEnv);
 
+        termLaunchDf.PlaceBehind(m_TermLaunchCmdTf);
         termLaunchDf.RegisterValueChangedCallback(e =>
         {
           if (e.newValue == k_CustomLabel)
@@ -289,10 +293,14 @@ namespace Neovim.Editor
       {
         string currArgs = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs;
         string currentTemplateName = GetJumpToCursorPosTemplateName(currArgs);
-        var templatesDd = mainPanel.Q<DropdownField>("jump-to-cursor-pos-templates");
-        templatesDd.choices = s_JumpToCursorPosTemplateNames;
+
+        var container = mainPanel.Q<VisualElement>("jump-to-cursor-pos-args");
+        var templatesDd = new PopupField<string>("template:", s_JumpToCursorPosTemplateNames, 0);
         templatesDd.SetValueWithoutNotify(currentTemplateName);
+        container.Add(templatesDd);
+
         m_JumpToCursorPosArgsTf = mainPanel.Q<TextField>("jump-to-cursor-pos-args-tf");
+        templatesDd.PlaceBehind(m_JumpToCursorPosArgsTf);
         m_JumpToCursorPosArgsTf.SetValueWithoutNotify(currArgs);
 
         m_JumpToCursorPosArgsTf.RegisterValueChangedCallback(e =>
@@ -387,21 +395,21 @@ namespace Neovim.Editor
 
       // Roslyn LS settings
       {
-        m_AnalyzerDiagnosticScopeDd = mainPanel.Q<DropdownField>("analyzer-diagnostic-scope-dd");
-        m_CompilerDiagnosticScopeDd = mainPanel.Q<DropdownField>("compiler-diagnostic-scope-dd");
-        m_AnalyzerDiagnosticScopeDd.SetValueWithoutNotify(NeovimCodeEditor.s_Config.AnalyzerDiagnosticScope);
-        m_CompilerDiagnosticScopeDd.SetValueWithoutNotify(NeovimCodeEditor.s_Config.CompilerDiagnosticScope);
+        m_AnalyzerDiagnosticScopeEf = mainPanel.Q<EnumField>("analyzer-diagnostic-scope-ef");
+        m_CompilerDiagnosticScopeEf = mainPanel.Q<EnumField>("compiler-diagnostic-scope-ef");
+        m_AnalyzerDiagnosticScopeEf.Init(NeovimCodeEditor.s_Config.AnalyzerDiagnosticScope);
+        m_CompilerDiagnosticScopeEf.Init(NeovimCodeEditor.s_Config.CompilerDiagnosticScope);
 
-        m_AnalyzerDiagnosticScopeDd.RegisterValueChangedCallback(e =>
+        m_AnalyzerDiagnosticScopeEf.RegisterValueChangedCallback(e =>
         {
-          if (e.newValue == NeovimCodeEditor.s_Config.AnalyzerDiagnosticScope)
+          if ((RoslynDiagnosticScope)e.newValue == NeovimCodeEditor.s_Config.AnalyzerDiagnosticScope)
             return;
           SetDirty(true);
         });
 
-        m_CompilerDiagnosticScopeDd.RegisterValueChangedCallback(e =>
+        m_CompilerDiagnosticScopeEf.RegisterValueChangedCallback(e =>
         {
-          if (e.newValue == NeovimCodeEditor.s_Config.CompilerDiagnosticScope)
+          if ((RoslynDiagnosticScope)e.newValue == NeovimCodeEditor.s_Config.CompilerDiagnosticScope)
             return;
           SetDirty(true);
         });
@@ -465,8 +473,8 @@ namespace Neovim.Editor
       m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.ProcessTimeout = m_ProcessTimeoutIf.value);
 
       // Roslyn LS settings
-      m_AnalyzerDiagnosticScopeDd.SetValueWithoutNotify(NeovimCodeEditor.SetAnalyzerDiagnosticScope(m_AnalyzerDiagnosticScopeDd.value));
-      m_CompilerDiagnosticScopeDd.SetValueWithoutNotify(NeovimCodeEditor.SetCompilerDiagnosticScope(m_CompilerDiagnosticScopeDd.value));
+      m_AnalyzerDiagnosticScopeEf.SetValueWithoutNotify(NeovimCodeEditor.SetAnalyzerDiagnosticScope((RoslynDiagnosticScope)m_AnalyzerDiagnosticScopeEf.value));
+      m_CompilerDiagnosticScopeEf.SetValueWithoutNotify(NeovimCodeEditor.SetCompilerDiagnosticScope((RoslynDiagnosticScope)m_CompilerDiagnosticScopeEf.value));
 
       // serialize the config shit
       NeovimCodeEditor.s_Config.Save();
@@ -482,7 +490,7 @@ namespace Neovim.Editor
     }
 
 
-    private void OnProjectRegenerationClick() => CodeEditor.Editor.CurrentCodeEditor.SyncAll();
+    private void OnProjectRegenerationClick() => NeovimCodeEditor.Sync();
 
 
     private void OnProjectGenerationFlag(ChangeEvent<bool> _) => SetDirty(true);
@@ -591,12 +599,24 @@ namespace Neovim.Editor
         {
           row = s_ModifierBindingVT.Instantiate();
 
-          var modifierDd = row.Q<DropdownField>("modifiers-dd");
           var deleteBtn = row.Q<Button>("delete-btn");
 
           var _modifiers = s_OpenFileModifiers.Keys.ToList();
-          modifierDd.choices = _modifiers;
+
+          // since PopupField is not supported in UXML we have to create it and add it.
+          // to make it clear where it is added, we keep a VisualElement that will be replaced by it.
+          var replacement = row.Q<VisualElement>("modifiers-dd");
+
+          var modifierDd = new PopupField<string>("modifier:", _modifiers, 0);
+          replacement.parent.Add(modifierDd);
+          modifierDd.PlaceInFront(replacement);
+
+          modifierDd.tooltip = replacement.tooltip;
+          modifierDd.style.marginLeft = modifierDd.style.marginRight = 0;
+
           modifierDd.SetValueWithoutNotify(binding.Representation);
+
+          replacement.RemoveFromHierarchy();
 
           modifierDd.RegisterValueChangedCallback(e =>
           {
@@ -621,8 +641,20 @@ namespace Neovim.Editor
 
         // template dropdown
         string currentTemplateName = GetJumpToCursorPosTemplateName(binding.Args);
-        var templateDd = row.Q<DropdownField>("templates-dd");
-        templateDd.choices = s_OpenFileTemplateNames;
+
+        // since PopupField is not supported in UXML we have to create it and add it.
+        // to make it clear where it is added, we keep a VisualElement that will be replaced by it.
+        var oldTemplatesPlaceholder = row.Q<VisualElement>("templates-dd");
+
+        var templateDd = new PopupField<string>("", s_OpenFileTemplateNames, 0);
+        oldTemplatesPlaceholder.parent.Add(templateDd);
+        templateDd.PlaceInFront(oldTemplatesPlaceholder);
+
+        templateDd.tooltip = oldTemplatesPlaceholder.tooltip;
+        templateDd.style.marginLeft = templateDd.style.marginRight = 0;
+
+        oldTemplatesPlaceholder.RemoveFromHierarchy();
+
         templateDd.SetValueWithoutNotify(currentTemplateName);
 
         // args text field
