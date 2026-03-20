@@ -746,8 +746,8 @@ namespace Neovim.Editor
           s_Config.Save();
 
           TryGetWindowHandle(p);
-          return true;
 #endif
+          return true;
         }
       }
       catch (Exception e)
@@ -1004,7 +1004,11 @@ namespace Neovim.Editor
     /// </summary>
     public static void SendNeovimCmd(string cmd)
     {
+#if UNITY_EDITOR_WIN
       string app = $"\"{s_Config.NvimExecutablePath}\"";
+#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      string app = s_Config.NvimExecutablePath;
+#endif
       using (var p = ProcessUtils.HeadlessProcess())
       {
         p.StartInfo.FileName = app;
@@ -1020,7 +1024,7 @@ namespace Neovim.Editor
         {
           p.RunWithAssertion(s_Config.ProcessTimeout);
         }
-        catch (ExitCodeMismatchException e) { }
+        catch (ExitCodeMismatchException) { }
         catch (TimeoutException) { }
 #endif
       }
