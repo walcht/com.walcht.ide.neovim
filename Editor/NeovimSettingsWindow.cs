@@ -114,7 +114,10 @@ namespace Neovim.Editor
       // keep this shit in this order - if you set position THEN minSize, position will be reset ...
       window.minSize = new Vector2(650, 300);
       window.position = new Rect(s_X, s_Y, s_Width, s_Height);
+
+#if UNITY_2020_2_OR_NEWER
       window.saveChangesMessage = "This window has unsaved changes. Would you like to save?";
+#endif
       window.ShowModalUtility();
 
       // save window position so that you do not have to resize it each time
@@ -125,11 +128,13 @@ namespace Neovim.Editor
     }
 
 
+#if UNITY_2020_2_OR_NEWER
     public override void SaveChanges()
     {
       Save();
       base.SaveChanges();
     }
+#endif
 
 #if UNITY_2022_2_OR_NEWER
     public override void DiscardChanges()
@@ -141,7 +146,9 @@ namespace Neovim.Editor
 
     private void SetDirty(bool val)
     {
+#if UNITY_2020_2_OR_NEWER
       hasUnsavedChanges = val;
+#endif
       if (m_ApplyBtn != null)
         m_ApplyBtn.SetEnabled(val);
     }
@@ -172,7 +179,7 @@ namespace Neovim.Editor
 
       var root = rootVisualElement;
 
-      VisualElement mainPanel = s_MainWindowVT.Instantiate();
+      VisualElement mainPanel = s_MainWindowVT.CloneTree();
       mainPanel.style.flexGrow = 1;  // keep this because Unity UIToolkit still sucks...
 
       // toolbar buttons
@@ -419,7 +426,7 @@ namespace Neovim.Editor
         m_InstanceIdTf = mainPanel.Q<TextField>("instanceid-placeholder-tf");
 #if UNITY_EDITOR_WIN
         m_ProcessPIDPlaceholderTf = mainPanel.Q<TextField>("processpid-placeholder-tf");
-        m_ProcessPIDPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_GetProcessPPIDPath);
+        m_ProcessPIDPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.GetProcessWindowHandlePath);
 #else
         mainPanel.Q<VisualElement>("processpid-placeholder").RemoveFromHierarchy();
 #endif
@@ -559,7 +566,7 @@ namespace Neovim.Editor
       for (int i = NeovimCodeEditor.s_Config.Analyzers.Count - 1; i >= 0; --i)
       {
         int j = i;
-        VisualElement row = s_AnalyzerEntryVT.Instantiate();
+        VisualElement row = s_AnalyzerEntryVT.CloneTree();
         var analyzerNameLabel = row.Q<Label>("analyzer-name");
         var analyzerPathLabel = row.Q<Label>("analyzer-path");
         var deleteBtn = row.Q<Button>("delete-btn");
@@ -590,11 +597,11 @@ namespace Neovim.Editor
 
         if (isDefault)
         {
-          row = s_DefaultModifierBindingVT.Instantiate();
+          row = s_DefaultModifierBindingVT.CloneTree();
         }
         else
         {
-          row = s_ModifierBindingVT.Instantiate();
+          row = s_ModifierBindingVT.CloneTree();
 
           var deleteBtn = row.Q<Button>("delete-btn");
 

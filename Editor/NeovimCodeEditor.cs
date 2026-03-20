@@ -7,8 +7,8 @@ using UnityEditor;
 using UnityEngine;
 using Unity.CodeEditor;
 using Debug = UnityEngine.Debug;
+
 #if UNITY_EDITOR_WIN
-using System.IO.Pipes;
 using System.Runtime.InteropServices;
 #endif
 
@@ -32,7 +32,8 @@ namespace Neovim.Editor
     // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
     // available for socket type" so we have to listen to a TCP socket instead with a local addr and a random port
     static string s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
-    public static readonly string s_GetProcessPPIDPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessPPID.ps1");
+    public static readonly string GetProcessWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessWindowHandle.ps1");
+    public static readonly string ReadWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/ReadWindowHandleFromPipeServer.ps1");
 #endif
 
     public static string ServerSocket
@@ -647,26 +648,32 @@ namespace Neovim.Editor
       {
         try
         {
-          // pipe's name should be the same as in "GetProcessPPID.ps1" script
-          using (var pipeClient = new NamedPipeClientStream(".", @"\\.\pipe\getprocessppidpipe", PipeDirection.In))
+          // Note: on .Net Standard 2.0 (at least on Unity 2019.4) there is a race-condition bug within the 
+          // NamedPipeClientStream.Connect() instance method. This is the reason why we invoke a Powershell script and
+          // just avoid that mess. Read this for details:
+          //  https://github.com/dotnet/runtime/pull/65553
+          using (var proc = ProcessUtils.HeadlessProcess())
           {
-            pipeClient.Connect(1000);
-            using (var _sr = new StreamReader(pipeClient))
+            proc.StartInfo.FileName = "powershell";
+            proc.StartInfo.Arguments = $"-File {ReadWindowHandlePath}";
+            proc.RunWithAssertion(1000);
+            var line = proc.StandardOutput.ReadLine();
+            if (line != null)
             {
-              string ppidStr = _sr.ReadLine() ?? throw new Exception("PPID received string is null");
-              var ppid = int.Parse(ppidStr);
-
-              Process neovimServerProcess = Process.GetProcessById(ppid);
-              IntPtr wh = ProcessUtils.GetWindowHandle(neovimServerProcess, process_startup_timeout);
+              IntPtr wh = new IntPtr(Convert.ToInt64(line));
               s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
               s_Config.Save();
             }
+            else
+            {
+              throw new Exception("PPID received/read string is null");
+            }
           }
         }
-        catch (Exception)
+        catch (Exception e)
         {
           s_WindowFocusingAvailable = false;
-          Debug.LogWarning(errMsg);
+          Debug.LogWarning(errMsg + $" Reason: {e.Message}");
         }
       }
       catch (Exception)
@@ -701,7 +708,7 @@ namespace Neovim.Editor
             .Replace("{analyzerDiagnosticScope}", s_Config.AnalyzerDiagnosticScope.ToString())
             .Replace("{compilerDiagnosticScope}", s_Config.CompilerDiagnosticScope.ToString())
 #if UNITY_EDITOR_WIN
-            .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
+            .Replace("{getProcessPPIDScriptPath}", GetProcessWindowHandlePath)
 #endif
           ;
 
