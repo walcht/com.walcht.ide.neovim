@@ -479,6 +479,7 @@ namespace Neovim.Editor
       // Roslyn LS settings
       m_AnalyzerDiagnosticScopeEf.SetValueWithoutNotify(NeovimCodeEditor.SetAnalyzerDiagnosticScope((RoslynDiagnosticScope)m_AnalyzerDiagnosticScopeEf.value));
       m_CompilerDiagnosticScopeEf.SetValueWithoutNotify(NeovimCodeEditor.SetCompilerDiagnosticScope((RoslynDiagnosticScope)m_CompilerDiagnosticScopeEf.value));
+      NeovimCodeEditor.RestartRoslynLS();
 
       // serialize the config shit
       NeovimCodeEditor.s_Config.Save();

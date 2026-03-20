@@ -35,6 +35,7 @@ namespace Neovim.Editor
     public static readonly string GetProcessWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessWindowHandle.ps1");
     public static readonly string ReadWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/ReadWindowHandleFromPipeServer.ps1");
 #endif
+    public static readonly string RestartRoslynLSPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/RestartRoslynLS.lua");
 
     public static string ServerSocket
     {
@@ -984,44 +985,53 @@ namespace Neovim.Editor
 
 
     public static RoslynDiagnosticScope SetAnalyzerDiagnosticScope(RoslynDiagnosticScope scope)
-      => s_Config.AnalyzerDiagnosticScope = scope;
+    {
+      s_Config.AnalyzerDiagnosticScope = scope;
+      SendNeovimCmd($":lua _G.nvim_unity_analyzer_diagnostic_scope='{s_Config.AnalyzerDiagnosticScope}'<CR>");
+      return s_Config.AnalyzerDiagnosticScope;
+    }
 
     public static RoslynDiagnosticScope SetCompilerDiagnosticScope(RoslynDiagnosticScope scope)
-      => s_Config.CompilerDiagnosticScope = scope;
+    {
+      s_Config.CompilerDiagnosticScope = scope;
+      SendNeovimCmd($":lua _G.nvim_unity_compiler_diagnostic_scope='{s_Config.CompilerDiagnosticScope}'<CR>");
+      return s_Config.CompilerDiagnosticScope;
+    }
 
 
     /// <summary>
-    /// Sends a remote command to the currenly running Neovim server instance to restart Roslyn LS.
+    /// Sends a remote command to the currenly running Neovim server instance.
     /// </summary>
-    public static void RestartRoslynLS()
+    public static void SendNeovimCmd(string cmd)
     {
-
       string app = $"\"{s_Config.NvimExecutablePath}\"";
       using (var p = ProcessUtils.HeadlessProcess())
       {
         p.StartInfo.FileName = app;
-        p.StartInfo.Arguments = "--cmd \"\"";
+        p.StartInfo.Arguments = $"--server {s_ServerSocket} --remote-send \"{cmd}\"";
 #if UNITY_EDITOR_WIN
-        // on Windows, for some reason the process executes correctly but without exiting within any given timeout
-        // to fix that, we simply catch the TimeoutException and kill the process.
         try
         {
           p.RunWithAssertion(s_Config.ProcessTimeout);
         }
         catch (TimeoutException) { }
 #else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-        // life is ez on Linux (unless you deal with any window manager...)
         try
         {
           p.RunWithAssertion(s_Config.ProcessTimeout);
         }
-        catch (ExitCodeMismatchException e)
-        {
-          Debug.LogWarning($"[neovim.ide] . Is the server running?");
-        }
+        catch (ExitCodeMismatchException e) { }
         catch (TimeoutException) { }
 #endif
       }
     }
+
+
+    /// <summary>
+    /// Sends a remote command to the currenly running Neovim server instance to restart Roslyn LS.
+    /// </summary>
+    public static void RestartRoslynLS() => SendNeovimCmd($":source {RestartRoslynLSPath}<CR>");
+
+
   }
 }
