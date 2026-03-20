@@ -29,10 +29,10 @@ namespace Neovim.Editor
     private Label m_InfoDesc;
 
     // visual tree (i.e., uxml) assets
-    private static readonly VisualTreeAsset s_MainWindowVT;
-    private static readonly VisualTreeAsset s_DefaultModifierBindingVT;
-    private static readonly VisualTreeAsset s_ModifierBindingVT;
-    private static readonly VisualTreeAsset s_AnalyzerEntryVT;
+    private static VisualTreeAsset s_MainWindowVT;
+    private static VisualTreeAsset s_DefaultModifierBindingVT;
+    private static VisualTreeAsset s_ModifierBindingVT;
+    private static VisualTreeAsset s_AnalyzerEntryVT;
 
     private static float s_X = Mathf.FloorToInt(Screen.width * 0.5f - Screen.width * 0.25f);
     private static float s_Y = Mathf.FloorToInt(Screen.height * 0.5f - Screen.height * 0.25f);
@@ -105,18 +105,8 @@ namespace Neovim.Editor
     private EnumField m_AnalyzerDiagnosticScopeEf;
     private EnumField m_CompilerDiagnosticScopeEf;
 
-    // TODO: persistent window position
-    static NeovimSettingsWindow()
-    {
-      s_MainWindowVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/settings_window.uxml");
-      s_DefaultModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/default_modifier_binding.uxml");
-      s_ModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/modifier_binding.uxml");
-      s_AnalyzerEntryVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/analyzer_entry.uxml");
-    }
-
 
     // MenuItem Creates a menu item and invokes the static function that follows it when the menu item is selected.
-    // TODO: don't show if Neovim is not chosen in External Editor Tools
     [MenuItem("Neovim/Settings")]
     public static void ShowWindow()
     {
@@ -160,6 +150,11 @@ namespace Neovim.Editor
     // CreateGUI is called when the EditorWindow's rootVisualElement is ready to be populated.
     private void CreateGUI()
     {
+      s_MainWindowVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/settings_window.uxml");
+      s_DefaultModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/default_modifier_binding.uxml");
+      s_ModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/modifier_binding.uxml");
+      s_AnalyzerEntryVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/analyzer_entry.uxml");
+
       s_OpenFileTemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
         .Select(t => t.Name)
         .Append(k_CustomLabel)
@@ -431,6 +426,8 @@ namespace Neovim.Editor
         m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
         m_ServerSocketTf.SetValueWithoutNotify(NeovimCodeEditor.ServerSocket);
         m_InstanceIdTf.SetValueWithoutNotify(NeovimCodeEditor.s_InstanceId);
+        mainPanel.Q<TextField>("project-root-dir-placeholder-tf").SetValueWithoutNotify(
+            FileUtility.NormalizeWindowsToUnix(Directory.GetParent(Application.dataPath).ToString()));
       }
 
       root.Add(mainPanel);

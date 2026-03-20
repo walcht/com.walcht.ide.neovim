@@ -18,8 +18,7 @@ namespace Neovim.Editor
   [InitializeOnLoad]
   public class NeovimCodeEditor : IExternalCodeEditor
   {
-    static readonly string[] _supportedFileNames = { "nvim", "nvim.exe" };
-    static bool s_WindowFocusingAvailable = false;
+    private static bool s_WindowFocusingAvailable = false;
 
     public static NeovimEditorConfig s_Config = new NeovimEditorConfig();
 
@@ -117,11 +116,13 @@ namespace Neovim.Editor
     /// Command that is passed to the Neovim server instance once it is instantiated. The variables here make sense
     /// only if you are using CGNvim's Roslyn LS configuration (at https://github.com/walcht/CGNvim).
     /// In case you are not, see how CGNvim uses them and implement them in your config.
+    /// If you are using WT then don't put semicolons here or it won't work. The great engineers at Microsoft decided
+    /// to interpret any semicolon character ';' as a command to open a new tab and there is no way to escape it.
     /// </summary>
     private static readonly string s_NvimCmdString = string.Join("", new string[] {
       "--cmd \"",
-      ":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}';",
-      "_G.nvim_unity_analyzer_diagnostic_scope='{analyzerDiagnosticScope}';",
+      ":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'",
+      "_G.nvim_unity_analyzer_diagnostic_scope='{analyzerDiagnosticScope}'",
       "_G.nvim_unity_compiler_diagnostic_scope='{compilerDiagnosticScope}'\"" });
 
     /// <summary>
@@ -150,7 +151,10 @@ namespace Neovim.Editor
 #else  // UNITY_EDITOR_WIN
     {
       // on Powershell, replace the ';' with "`;"
-      ("wt", "nt {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
+      // also be aware that Windows Terminal (WT) interprets ';' as ANYWHERE as a command to open a new tab...
+      // go fucking figure why the most widely used terminal on Windows has not implemented a way to escape its symbolic
+      // characters: https://github.com/microsoft/terminal/issues/13264
+      ("wt", "nt {app} {filePath} --listen {serverSocket} " + s_NvimCmdString + "; nt Powershell -File {getProcessPPIDScriptPath}"),
       ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString)
     };
 #endif
@@ -612,177 +616,178 @@ namespace Neovim.Editor
     }
 
 
-    // The external code editor needs to handle the request to open a file.
-    // Note that by returning 'false' Unity will try to open the file in a different program which is
-    // the reason why, for instance, we return 'false' for image files
-    public bool OpenProject(string filePath = "", int line = -1, int column = -1)
-    {
-      if (!string.IsNullOrWhiteSpace(filePath) && !File.Exists(filePath)) return false;
-      if (line == -1) line = 1;
-      if (column == -1) column = 0;
-
-      // we want to return false in case a different editor is supplied (e.g., code.cmd for VSCode)
-      if (!Array.Exists(_supportedFileNames, fn =>
-            string.Compare(fn, Path.GetFileName(s_Config.NvimExecutablePath), StringComparison.OrdinalIgnoreCase) == 0))
-        return false;
-
-      // only use NeoVim for reasonable file extensions (e.g., do not use NeoVim to open .png files which happens
-      // without this check). Skip extension check when filePath is empty (e.g., "Assets/Open C# project").
-      if (!string.IsNullOrWhiteSpace(filePath) && !Array.Exists(s_SupportedExtensions, e => e.ToLower() == Path.GetExtension(filePath)
-            .TrimStart('.')
-            .ToLower()))
-        return false;
-
 #if UNITY_EDITOR_WIN
-      string app = $"\"{s_Config.NvimExecutablePath}\"";
-#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-      string app = s_Config.NvimExecutablePath;
-#endif
-
-      // get terminal launch cmd and its args from Unity editor preferences
-      string termLaunchCmd = s_Config.TermLaunchCmd;
-      string termLaunchArgs = s_Config.TermLaunchArgs;
-      string termLaunchEnv = s_Config.TermLaunchEnv;
-
-      // instantiate a new Neovim server instance in case there isn't one running for this Unity session
-      if (!IsNvimServerInstanceAlreadyRunning())
+    /// <summary>
+    /// Tries to get the window handle of the Neovim server instance process. First it attempts to call GetWindowHandle
+    /// directly on the provided process <paramref name="p"> otherwise it executes the GetProcessPPID.ps1 script on
+    /// one of its children - which is assumed to have a Window attached to it as is the case with WT - to get its
+    /// window handle. If that fails, an error log is shown and window focusing is disabled.
+    /// </summary>
+    /// <param name="p">Neovim server instance process (i.e., the process that starts Neovim)</param>
+    private void TryGetWindowHandle(Process p)
+    {
+      // the idea here is to figure out the handle of the process running the Neovim server instance
+      // this is a bit tricky on Windows - because depending on the terminal launch cmd, it might
+      // spawn a child process or it might not.
+      //
+      // first - we assume that the terminal launch cmd's process is the one that has Neovim server
+      // open (i.e., no child process)
+      int process_startup_timeout = 1000;
+      var errMsg = "[neovim.ide] failed to get the PID of Neovim server instance's window. "
+        + "Auto window focusing is disabled.";
+      try
+      {
+        IntPtr wh = ProcessUtils.GetWindowHandle(p, process_startup_timeout);
+        s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
+        s_Config.Save();
+      }
+      // this probably means that the terminal launch cmd spawns a new child instance that is responsible for the Neovim
+      // window (e.g., WT).
+      catch (InvalidOperationException)
       {
         try
         {
-          using (var p = new Process())
+          // pipe's name should be the same as in "GetProcessPPID.ps1" script
+          using (var pipeClient = new NamedPipeClientStream(".", @"\\.\pipe\getprocessppidpipe", PipeDirection.In))
           {
-            p.StartInfo.FileName = termLaunchCmd
-              .Replace("{app}", app);
-            p.StartInfo.Arguments = termLaunchArgs
-              .Replace("{app}", app)
-              .Replace("{filePath}", string.IsNullOrWhiteSpace(filePath) ? "" : $"\"{filePath}\"")
-              .Replace("{serverSocket}", s_ServerSocket)
-              .Replace("{instanceId}", s_InstanceId)
-              .Replace("{projectRootDir}", FileUtility.NormalizeWindowsToUnix(Directory.GetParent(Application.dataPath).ToString()))
-              .Replace("{analyzerDiagnosticScope}", s_Config.AnalyzerDiagnosticScope.ToString())
-              .Replace("{compilerDiagnosticScope}", s_Config.CompilerDiagnosticScope.ToString())
-#if UNITY_EDITOR_WIN
-              .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
-#endif
-            ;
-
-            // pass optionally-set environment variables to process
-            if (!string.IsNullOrWhiteSpace(termLaunchEnv))
+            pipeClient.Connect(1000);
+            using (var _sr = new StreamReader(pipeClient))
             {
-              foreach (var env in termLaunchEnv.Split(' '))
-              {
-                var envKey = env.Split('=');
-                if (envKey.Length == 2)
-                {
-                  p.StartInfo.Environment[envKey[0]] = envKey[1];
-                }
-                else
-                {
-                  Debug.LogWarning($"[neovim.ide] failed to parse environment variable entry from: {env}. Expected format is: ENV=VALUE");
-                }
-              }
-            }
+              string ppidStr = _sr.ReadLine() ?? throw new Exception("PPID received string is null");
+              var ppid = int.Parse(ppidStr);
 
-            p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
-            p.StartInfo.CreateNoWindow = false;
-            p.StartInfo.UseShellExecute = false;
-            // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
-
-            // start and do not care (do not wait for exit)
-            p.Start();
-
-
-#if UNITY_EDITOR_WIN
-
-            // save the server socket so that we can communicate with it later
-            // (e.g., when Unity exits but the server is still running)
-            s_Config.PrevServerSocket = s_ServerSocket;
-            s_Config.Save();
-
-            // the idea here is to figure out the handle of the process running the Neovim server instance
-            // this is a bit tricky on Windows - because depending on the terminal launch cmd, it might
-            // spawn a child process or it might not.
-            //
-            // first - we assume that the terminal launch cmd's process is the one that has Neovim server
-            // open (i.e., no child process)
-            int process_startup_timeout = 1000;
-            try
-            {
-              IntPtr wh = ProcessUtils.GetWindowHandle(p, process_startup_timeout);
+              Process neovimServerProcess = Process.GetProcessById(ppid);
+              IntPtr wh = ProcessUtils.GetWindowHandle(neovimServerProcess, process_startup_timeout);
               s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
               s_Config.Save();
             }
-            // this probably means that the terminal launch cmd spawns a new child instance that is responsible for the Neovim window
-            catch (InvalidOperationException)
-            {
-              // pipe's name should be the same as in "GetProcessPPID.ps1" script
-              using (var pipeClient = new NamedPipeClientStream(".", @"\\.\pipe\getprocessppidpipe", PipeDirection.In))
-              {
-                pipeClient.Connect(1000);
-                using (var _sr = new StreamReader(pipeClient))
-                {
-                  string ppidStr = _sr.ReadLine() ?? throw new Exception("PPID received string is null");
-                  var ppid = int.Parse(ppidStr);
-
-                  Process neovimServerProcess = Process.GetProcessById(ppid);
-                  IntPtr wh = ProcessUtils.GetWindowHandle(neovimServerProcess, process_startup_timeout);
-                  s_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
-                  s_Config.Save();
-                }
-              }
-            }
-            catch (Exception)
-            {
-              s_WindowFocusingAvailable = false;
-              Debug.LogWarning($"[neovim.ide] failed to get the PID of the window responsible for the Neovim server instance."
-                  + " Auto window focusing is disabled");
-            }
-#endif
           }
         }
-        catch (Exception e)
+        catch (Exception)
         {
-          Debug.LogError($"[neovim.ide] failed to create a Neovim server instance. Reason: {e}");
-          return false;
+          s_WindowFocusingAvailable = false;
+          Debug.LogWarning(errMsg);
         }
       }
-
-#if UNITY_EDITOR_WIN
-      // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not available for socket type"
-      // so we have to listen to a TCP socket instead with a local addr and a random port - this will be overwitten below
-      s_ServerSocket = s_Config.PrevServerSocket;
+      catch (Exception)
+      {
+        s_WindowFocusingAvailable = false;
+        Debug.LogWarning(errMsg);
+      }
+    }
 #endif
 
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="app"></param>
+    /// <param name="filePath"></param>
+    /// <returns>whether the nvim server instance is successfully instantied.</returns>
+    private bool TryInstantiateNvimServerInstance(string app, string filePath)
+    {
+      try
+      {
+        using (var p = new Process())
+        {
+          p.StartInfo.FileName = s_Config.TermLaunchCmd
+            .Replace("{app}", app);
+          p.StartInfo.Arguments = s_Config.TermLaunchArgs
+            .Replace("{app}", app)
+            .Replace("{filePath}", string.IsNullOrWhiteSpace(filePath) ? "" : $"\"{filePath}\"")
+            .Replace("{serverSocket}", s_ServerSocket)
+            .Replace("{instanceId}", s_InstanceId)
+            .Replace("{projectRootDir}", FileUtility.NormalizeWindowsToUnix(Directory.GetParent(Application.dataPath).ToString()))
+            .Replace("{analyzerDiagnosticScope}", s_Config.AnalyzerDiagnosticScope.ToString())
+            .Replace("{compilerDiagnosticScope}", s_Config.CompilerDiagnosticScope.ToString())
+#if UNITY_EDITOR_WIN
+            .Replace("{getProcessPPIDScriptPath}", s_GetProcessPPIDPath)
+#endif
+          ;
+
+          // pass optionally-set environment variables to process
+          if (!string.IsNullOrWhiteSpace(s_Config.TermLaunchEnv))
+          {
+            foreach (var env in s_Config.TermLaunchEnv.Split(' '))
+            {
+              var envKey = env.Split('=');
+              if (envKey.Length == 2)
+              {
+                p.StartInfo.Environment[envKey[0]] = envKey[1];
+              }
+              else
+              {
+                Debug.LogWarning($"[neovim.ide] failed to parse environment variable entry from: {env}. Expected format is: ENV=VALUE");
+              }
+            }
+          }
+
+          p.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
+          p.StartInfo.CreateNoWindow = false;
+          p.StartInfo.UseShellExecute = false;
+          // Debug.Log($"{p.StartInfo.FileName} {p.StartInfo.Arguments}");
+
+          // start and do not care (do not wait for exit)
+          p.Start();
+
+
+#if UNITY_EDITOR_WIN
+          // save the server socket so that we can communicate with it later
+          // (e.g., when Unity exits but the server is still running)
+          s_Config.PrevServerSocket = s_ServerSocket;
+          s_Config.Save();
+
+          TryGetWindowHandle(p);
+          return true;
+#endif
+        }
+      }
+      catch (Exception e)
+      {
+        Debug.LogError($"[neovim.ide] failed to create a Neovim server instance. Reason: {e}");
+        return false;
+      }
+    }
+
+
+    /// <summary>
+    /// Tries to open the provided <paramref name="filePath"> in Neovim by sending a request to the currently running
+    /// Neovim server instance.
+    /// </summary>
+    /// <param name="app">Neovim executable</param>
+    /// <param name="filePath">absolute path of the file to open</param>
+    private void TryOpenFileInNvimServerInstance(string app, string filePath)
+    {
       // send request to Neovim server instance listening on the provided socket path to open a tab/buffer corresponding
       // to the provided filepath. Skip when filePath is empty (e.g., "Assets/Open C# project").
-      if (!string.IsNullOrWhiteSpace(filePath))
+      if (string.IsNullOrWhiteSpace(filePath))
+        return;
+      int currentMods = Event.current != null ? (int)Event.current.modifiers : 0;
+      const int relevantMask = (int)(EventModifiers.Shift | EventModifiers.Control | EventModifiers.Alt);
+      currentMods &= relevantMask;
+
+      var binding = s_Config.ModifierBindings
+        .FirstOrDefault(b => (b.Modifiers & relevantMask) == currentMods)
+        ?? s_Config.ModifierBindings.FirstOrDefault(b => b.Modifiers == 0);
+
+      string openFileArgs = binding?.Args ?? s_OpenFileArgsTemplates[0].Args;
+
+      string args = openFileArgs
+        .Replace("{serverSocket}", s_ServerSocket)
+        .Replace("{filePath}", $"\"{filePath}\"");
+
+      using (var p = ProcessUtils.HeadlessProcess())
       {
-        int currentMods = Event.current != null ? (int)Event.current.modifiers : 0;
-        const int relevantMask = (int)(EventModifiers.Shift | EventModifiers.Control | EventModifiers.Alt);
-        currentMods &= relevantMask;
-
-        var binding = s_Config.ModifierBindings
-          .FirstOrDefault(b => (b.Modifiers & relevantMask) == currentMods)
-          ?? s_Config.ModifierBindings.FirstOrDefault(b => b.Modifiers == 0);
-
-        string openFileArgs = binding?.Args ?? s_OpenFileArgsTemplates[0].Args;
-
-        string args = openFileArgs
-          .Replace("{serverSocket}", s_ServerSocket)
-          .Replace("{filePath}", $"\"{filePath}\"");
-
-        using (var p = ProcessUtils.HeadlessProcess())
-        {
-          p.StartInfo.FileName = app;
-          p.StartInfo.Arguments = args;
+        p.StartInfo.FileName = app;
+        p.StartInfo.Arguments = args;
 #if UNITY_EDITOR_WIN
-          // on Windows, for some reason the process executes correctly but without exiting within any given timeout
-          // to fix that, we simply catch the TimeoutException and kill the process.
-          try
-          {
-            p.RunWithAssertion(s_Config.ProcessTimeout);
-          }
-          catch (TimeoutException) { }
+        // on Windows, for some reason the process executes correctly but without exiting within any given timeout
+        // to fix that, we simply catch the TimeoutException and kill the process.
+        try
+        {
+          p.RunWithAssertion(s_Config.ProcessTimeout);
+        }
+        catch (TimeoutException) { }
 #else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
         // life is ez on Linux (unless you deal with any window manager...)
         try
@@ -795,31 +800,42 @@ namespace Neovim.Editor
         }
         catch (TimeoutException) { }
 #endif
-        }
       }
+    }
 
+
+    /// <summary>
+    /// Tries to jump to provided cursor position and fails silently in case it can't. If <paramref name="line"> is set
+    /// to 1 and <paramref name="column"> is set to 0 this function does nothing.
+    /// </summary>
+    /// <param name="app">Nvim executable</param>
+    /// <param name="line">line to jump to.</param>
+    /// <param name="column">column to jump to.</param>
+    /// <returns></returns>
+    private void TryJumpToCursorPosition(string app, int line, int column)
+    {
       /*
       * now send request to jump cursor to exact position. You cannot do both --remote-tab and --remote-send at the
       * same time (this is a limitation of the Neovim CLI as it will only execute the last --remote argument and not
       * both)
       */
-      if (line != 1 || column != 0)
-      {
-        string args = s_Config.JumpToCursorPositionArgs
-          .Replace("{serverSocket}", s_ServerSocket)
-          .Replace("{line}", line.ToString())
-          .Replace("{column}", column.ToString());
+      if (line == 1 && column == 0)
+        return;
+      string args = s_Config.JumpToCursorPositionArgs
+        .Replace("{serverSocket}", s_ServerSocket)
+        .Replace("{line}", line.ToString())
+        .Replace("{column}", column.ToString());
 
-        using (var p = ProcessUtils.HeadlessProcess())
-        {
-          p.StartInfo.FileName = app;
-          p.StartInfo.Arguments = args;
+      using (var p = ProcessUtils.HeadlessProcess())
+      {
+        p.StartInfo.FileName = app;
+        p.StartInfo.Arguments = args;
 #if UNITY_EDITOR_WIN
-          try
-          {
-            p.RunWithAssertion(s_Config.ProcessTimeout);
-          }
-          catch (TimeoutException) { }
+        try
+        {
+          p.RunWithAssertion(s_Config.ProcessTimeout);
+        }
+        catch (TimeoutException) { }
 #else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
         try
         {
@@ -828,12 +844,18 @@ namespace Neovim.Editor
         catch (ExitCodeMismatchException) { }
         catch (TimeoutException) { }
 #endif
-        }
       }
+    }
 
-      // optionally focus on Neovim - this is extremely tricky to implement across platforms
+
+    /// <summary>
+    /// Tries to focus on the currently running Neovim server instance Window. Since this is just an enhancement
+    /// feature, in case of errors it silently fails.
+    /// </summary>
+    private void TryFocusOnNvimServerInstance()
+    {
       if (!s_WindowFocusingAvailable)
-        return true;
+        return;
 
 #if UNITY_EDITOR_LINUX
       switch (s_LinuxPlatform)
@@ -898,6 +920,57 @@ namespace Neovim.Editor
       ShowWindow(windowHandle, 5);  // 5 == Activates the window and displays it in its current size and position
       SetForegroundWindow(windowHandle);
 #endif
+    }
+
+
+    /// <summary>
+    /// The external code editor needs to handle the request to open a file. Note that by returning 'false' Unity will
+    /// try to open the file in a different program which is the reason why, for instance, we return 'false' for image
+    /// files and other formats that are not expected not to be opened by Neovim.
+    /// </summary>
+    /// <param name="filePath"></param>
+    /// <param name="line"></param>
+    /// <param name="column"></param>
+    /// <returns>true in case Neovim managed to successfully open this project/file. false, in case the filetype is
+    /// not execpted to be opened by Neovim (e.g., images) or in case this fails to open the project/file in Neovim.
+    /// </returns>
+    public bool OpenProject(string filePath = "", int line = -1, int column = -1)
+    {
+      if (!string.IsNullOrWhiteSpace(filePath) && !File.Exists(filePath)) return false;
+      if (line == -1) line = 1;
+      if (column == -1) column = 0;
+
+      // only use NeoVim for reasonable file extensions (e.g., do not use NeoVim to open .png files which happens
+      // without this check). Skip extension check when filePath is empty (e.g., "Assets/Open C# project").
+      if (!string.IsNullOrWhiteSpace(filePath) && !Array.Exists(s_SupportedExtensions, e => e.ToLower() == Path.GetExtension(filePath)
+            .TrimStart('.')
+            .ToLower()))
+        return false;
+
+#if UNITY_EDITOR_WIN
+      string app = $"\"{s_Config.NvimExecutablePath}\"";
+#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
+      string app = s_Config.NvimExecutablePath;
+#endif
+
+      // instantiate a new Neovim server instance in case there isn't one running for this Unity session
+      if (!IsNvimServerInstanceAlreadyRunning())
+        if (!TryInstantiateNvimServerInstance(app, filePath))
+          return false;
+
+#if UNITY_EDITOR_WIN
+      // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not available for socket type"
+      // so we have to listen to a TCP socket instead with a local addr and a random port - this will be overwitten below
+      s_ServerSocket = s_Config.PrevServerSocket;
+#endif
+
+      TryOpenFileInNvimServerInstance(app, filePath);
+
+      // optionally jump to cursor position
+      TryJumpToCursorPosition(app, line, column);
+
+      // optionally focus on Neovim server instance window - this is extremely tricky to implement across platforms
+      TryFocusOnNvimServerInstance();
 
       return true;
     }
@@ -909,6 +982,10 @@ namespace Neovim.Editor
     public static RoslynDiagnosticScope SetCompilerDiagnosticScope(RoslynDiagnosticScope scope)
       => s_Config.CompilerDiagnosticScope = scope;
 
+
+    /// <summary>
+    /// Sends a remote command to the currenly running Neovim server instance to restart Roslyn LS.
+    /// </summary>
     public static void RestartRoslynLS()
     {
 

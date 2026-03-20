@@ -4,8 +4,19 @@ Neovim integration with the Unity game engine. Inspired from the official Visual
 Studio editor IDE package: [com.unity.ide.visualstudio][com.unity.ide.visualstudio].
 
 > [!Important]
-> This package only supports **Unity >= 2022.3 LTS**. Support for older versions
+> This package only supports **Unity >= 2019.4 LTS**. Support for older versions
 > is not and will not be planned.
+
+This package is constantly tested against the following Unity versions and
+platforms:
+
+| Unity                     | OS                    | Status (\*Notes)         |
+| ------------------------- | --------------------- |------------------------- |
+| Unity 6000.3 LTS          | Windows 10            | OK                       |
+| Unity 2022.3 LTS          | Windows 10            | OK                       |
+| Unity 2022.3 LTS          | Ubuntu                | OK                       |
+| Unity 2020.3 LTS          | Windows 10            | OK (\*issue with the settings menu - issue with Unity's UIToolkit)   |
+| Unity 2019.4 LTS          | Windows 10            | OK                       |
 
 ## Features
 
@@ -268,6 +279,14 @@ just newer versions of Unity.
 
 PRs are squashed before being merged so do not pay a lof of attention to commit
 messages and commit structure.
+
+You have to keep in a mind a couple of things when opening a PR:
+
+  1. Only use features that are supported by **C# 7.3 or earlier**.
+  1. Only use features that are supported by **.Net Standard 2.0 or earlier**.
+  1. Only use features that are available on all **Unity versions 2019.1 or
+  later** (Note: if it works on 2019.1 that doesn't mean that it will work on,
+  for instance, 2020.3).
 
 For heavily LLM-authored contributions, please try to reduce the verbosity (LLMs
 tend to be extremely verbose and perform very large changes at once). Otherwise,

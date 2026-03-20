@@ -3,9 +3,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using UnityEditor;
-// using Debug = UnityEngine.Debug;
 using SimpleJSON;
-using System.Text;
 
 namespace Neovim.Editor
 {
@@ -22,20 +20,20 @@ namespace Neovim.Editor
     /// <summary>
     /// EventModifiers cast to int (0 = no modifier = default).
     /// </summary>
-    public int Modifiers;
+    public int Modifiers = 0;
 
 
     /// <summary>
     /// String representation of this binding (e.g., "SHIFT+CTRL"). This is mainly used so that it is easier to read
     /// this from a raw JSON file.
     /// </summary>
-    public string Representation;
+    public string Representation = string.Empty;
 
 
     /// <summary>
     /// Arguments associated with this binding that will be supplied to nvim remote command.
     /// </summary>
-    public string Args;
+    public string Args = string.Empty;
   }
 
   public class NeovimEditorConfig
@@ -241,50 +239,9 @@ namespace Neovim.Editor
       }
     }
 
+
     public bool SetDirty(bool dirty) => m_Dirty = dirty;
 
-    /// <summar>
-    ///   see: https://www.ecma-international.org/wp-content/uploads/ECMA-404_2nd_edition_december_2017.pdf#page=12
-    /// </summary>
-    public static string EscapeForSimpleJSON(string text)
-    {
-      var sb = new StringBuilder(text.Length + text.Length / 10);
-      foreach (char c in text)
-      {
-        switch (c)
-        {
-          case '\"':
-            sb.Append("\\u22");
-            break;
-          case '\n':
-            sb.Append("\\n");
-            break;
-          case '\r':
-            sb.Append("\\r");
-            break;
-          case '\t':
-            sb.Append("\\t");
-            break;
-          case '\b':
-            sb.Append("\\b");
-            break;
-          case '\f':
-            sb.Append("\\f");
-            break;
-          case '{':
-            sb.Append("\\u7b");
-            break;
-          case '}':
-            sb.Append("\\u7d");
-            break;
-          default:
-            sb.Append(c);
-            break;
-        }
-      }
-      string result = sb.ToString();
-      return result;
-    }
 
     public void Save()
     {
@@ -310,11 +267,27 @@ namespace Neovim.Editor
 #if UNITY_EDITOR_WIN
         node.Add("PrevServerProcessIntPtrStringRepr", new JSONString(m_PrevServerProcessIntPtrStringRepr));
 #endif
+        // analyzers
+        {
+          var nodeArray = new JSONArray();
+          for (int i = 0; i < m_Analyzers.Count; ++i)
+            nodeArray.Add(null, new JSONString(m_Analyzers[i]));
+          node.Add("Analyzers", nodeArray);
+        }
 
-        var nodeArray = new JSONArray();
-        for (int i = 0; i < m_Analyzers.Count; ++i)
-          nodeArray.Add(null, new JSONString(m_Analyzers[i]));
-        node.Add("Analyzers", nodeArray);
+        // modifier bindings
+        {
+          var nodeArray = new JSONArray();
+          for (int i = 0; i < m_ModifierBindings.Count; ++i)
+          {
+            var nodeObj = new JSONObject();
+            nodeObj.Add("Modifiers", new JSONNumber(m_ModifierBindings[i].Modifiers));
+            nodeObj.Add("Representation", new JSONString(m_ModifierBindings[i].Representation));
+            nodeObj.Add("Args", new JSONString(m_ModifierBindings[i].Args));
+            nodeArray.Add(null, nodeObj);
+          }
+          node.Add("ModifierBindings", nodeArray);
+        }
 
         json = node.ToString();
       }
@@ -364,12 +337,26 @@ namespace Neovim.Editor
 #endif
 
         for (int i = 0; i < d["Analyzers"].Count; ++i)
+        {
           config.Analyzers.Add(d["Analyzers"][i].Value);
+        }
+
+        for (int i = 0; i < d["ModifierBindings"].Count; ++i)
+        {
+          var mb = new ModifierBinding
+          {
+            Modifiers = (int)d["ModifierBindings"][i]["Modifiers"].AsULong,
+            Representation = d["ModifierBindings"][i]["Representation"].Value,
+            Args = d["ModifierBindings"][i]["Args"].Value
+          };
+          config.ModifierBindings.Add(mb);
+        }
       }
 
       // since we have just deserialized this - it should not have an internal dirty state
       config.SetDirty(false);
       return config;
+
     }
 
     public bool TryAddAnalyzer(string path)
