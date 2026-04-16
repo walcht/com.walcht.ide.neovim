@@ -41,13 +41,14 @@ namespace Neovim.Editor
     // keep this defaulted to true
     private bool m_Dirty = true;
 
-    public ProjectGenerationFlag m_CsprojFlags =
+    private static readonly ProjectGenerationFlag m_CsprojFlagsDefault =
       ProjectGenerationFlag.BuiltIn |
       ProjectGenerationFlag.Embedded |
       ProjectGenerationFlag.Git |
       ProjectGenerationFlag.Local |
       ProjectGenerationFlag.LocalTarBall |
       ProjectGenerationFlag.Registry;
+    public ProjectGenerationFlag m_CsprojFlags = m_CsprojFlagsDefault;
 
     /// <summary>
     /// Project generation flags (i.e., generate .csproj files for which packages/assets/projects).
@@ -299,64 +300,80 @@ namespace Neovim.Editor
       EditorPrefs.DeleteKey("NvimUnityConfigJson");
     }
 
-    public static NeovimEditorConfig Load()
+    public static bool Load(out NeovimEditorConfig config)
     {
       string json = EditorPrefs.GetString("NvimUnityConfigJson");
+      config = new NeovimEditorConfig();
+      config.SetDirty(true);
 
       // this means that there isn't any saved (i.e., persistent) config.
       // create a new config which should have some minimal default state
-      // dirty flag is already set to true by default
       if (string.IsNullOrWhiteSpace(json))
-      {
-        var _config = new NeovimEditorConfig();
-        _config.SetDirty(true);  // just to be 100% sure
-        return _config;
-      }
+        return true;
 
-      var config = new NeovimEditorConfig();
+      try
       {
         var d = JSONNode.Parse(json) as JSONObject;
 
-        Enum.TryParse<RoslynDiagnosticScope>((d["AnalyzerDiagnosticScope"] as JSONString).Value, out var analyzerDiagnosticScope);
+        Enum.TryParse<RoslynDiagnosticScope>((d.GetValueOrDefault("AnalyzerDiagnosticScope", "openFiles") as JSONString).Value,
+            out var analyzerDiagnosticScope);
         config.AnalyzerDiagnosticScope = analyzerDiagnosticScope;
 
-        Enum.TryParse<RoslynDiagnosticScope>((d["CompilerDiagnosticScope"] as JSONString).Value, out var compilerDiagnosticScope);
+        Enum.TryParse<RoslynDiagnosticScope>((d.GetValueOrDefault("CompilerDiagnosticScope", "openFiles") as JSONString).Value,
+            out var compilerDiagnosticScope);
         config.CompilerDiagnosticScope = compilerDiagnosticScope;
 
-        config.CsprojFlags = (ProjectGenerationFlag)(d["CsprojFlags"] as JSONNumber).AsULong;
-        config.NvimExecutablePath = (d["NvimExecutablePath"] as JSONString).Value;
-        config.TermLaunchCmd = (d["TermLaunchCmd"] as JSONString).Value;
-        config.TermLaunchArgs = (d["TermLaunchArgs"] as JSONString).Value;
-        config.TermLaunchEnv = (d["TermLaunchEnv"] as JSONString).Value;
-        config.OpenFileArgs = (d["OpenFileArgs"] as JSONString).Value;
-        config.JumpToCursorPositionArgs = (d["JumpToCursorPositionArgs"] as JSONString).Value;
-        config.ProcessTimeout = (int)(d["ProcessTimeout"] as JSONNumber).AsULong;
-        config.PrevServerSocket = (d["PrevServerSocket"] as JSONString).Value;
+        config.CsprojFlags = (ProjectGenerationFlag)(d.GetValueOrDefault("CsprojFlags", (int)m_CsprojFlagsDefault) as JSONNumber).AsULong;
+        config.NvimExecutablePath = (d.GetValueOrDefault("NvimExecutablePath", string.Empty) as JSONString).Value;
+        config.TermLaunchCmd = (d.GetValueOrDefault("TermLaunchCmd", string.Empty) as JSONString).Value;
+        config.TermLaunchArgs = (d.GetValueOrDefault("TermLaunchArgs", string.Empty) as JSONString).Value;
+        config.TermLaunchEnv = (d.GetValueOrDefault("TermLaunchEnv", string.Empty) as JSONString).Value;
+        config.OpenFileArgs = (d.GetValueOrDefault("OpenFileArgs", string.Empty) as JSONString).Value;
+        config.JumpToCursorPositionArgs = (d.GetValueOrDefault("JumpToCursorPositionArgs", string.Empty) as JSONString).Value;
+        config.ProcessTimeout = (int)(d.GetValueOrDefault("ProcessTimeout", 150) as JSONNumber).AsULong;
+        config.PrevServerSocket = (d.GetValueOrDefault("PrevServerSocket", string.Empty) as JSONString).Value;
 #if UNITY_EDITOR_WIN
-        config.PrevServerProcessIntPtrStringRepr = (d["PrevServerProcessIntPtrStringRepr"] as JSONString).Value;
+        config.PrevServerProcessIntPtrStringRepr = (d.GetValueOrDefault("PrevServerProcessIntPtrStringRepr", string.Empty) as JSONString).Value;
 #endif
 
-        for (int i = 0; i < d["Analyzers"].Count; ++i)
+        if (d.HasKey("Analyzers") && d["Analyzers"].IsArray)
         {
-          config.Analyzers.Add(d["Analyzers"][i].Value);
-        }
-
-        for (int i = 0; i < d["ModifierBindings"].Count; ++i)
-        {
-          var mb = new ModifierBinding
+          for (int i = 0; i < d["Analyzers"].Count; ++i)
           {
-            Modifiers = (int)d["ModifierBindings"][i]["Modifiers"].AsULong,
-            Representation = d["ModifierBindings"][i]["Representation"].Value,
-            Args = d["ModifierBindings"][i]["Args"].Value
-          };
-          config.ModifierBindings.Add(mb);
-        }
+            config.Analyzers.Add(d["Analyzers"][i].Value);
+          }
+        } // else => empty analyzers array
+
+        if (d.HasKey("ModifierBindings") && d["ModifierBindings"].IsArray)
+        {
+          for (int i = 0; i < d["ModifierBindings"].Count; ++i)
+          {
+            if (!d["ModifierBindings"][i].HasKey("Modifiers") ||
+                !d["ModifierBindings"][i]["Modifiers"].IsNumber ||
+                !d["ModifierBindings"][i].HasKey("Representation") ||
+                !d["ModifierBindings"][i]["Representation"].IsString ||
+                !d["ModifierBindings"][i].HasKey("Args") ||
+                !d["ModifierBindings"][i]["Args"].IsString
+                )
+              continue;
+            var mb = new ModifierBinding
+            {
+              Modifiers = (int)d["ModifierBindings"][i]["Modifiers"].AsULong,
+              Representation = d["ModifierBindings"][i]["Representation"].Value,
+              Args = d["ModifierBindings"][i]["Args"].Value
+            };
+            config.ModifierBindings.Add(mb);
+          }
+        } // else => empty analyzers array
       }
-
-      // since we have just deserialized this - it should not have an internal dirty state
-      config.SetDirty(false);
-      return config;
-
+      catch (Exception)  // something went wrong with Json parsing
+      {
+        // recreate a default config
+        config = new NeovimEditorConfig();
+        config.SetDirty(true);
+        return false;
+      }
+      return true;
     }
 
     public bool TryAddAnalyzer(string path)

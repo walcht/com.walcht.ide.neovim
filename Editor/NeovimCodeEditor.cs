@@ -282,7 +282,11 @@ namespace Neovim.Editor
     static NeovimCodeEditor()
     {
       // config initialization
-      s_Config = NeovimEditorConfig.Load();
+      if (!NeovimEditorConfig.Load(out s_Config))
+      {
+        Debug.LogWarning("[neovim.ide] couldn't load saved config. Consider reseting the config by going to the "
+            + "top menu: Neovim -> Settings -> Reset");
+      }
       if (!SetDefaults())
         return;
 
@@ -525,7 +529,11 @@ namespace Neovim.Editor
     public static void ResetConfig()
     {
       NeovimEditorConfig.Reset();
-      s_Config = NeovimEditorConfig.Load();
+      if (!NeovimEditorConfig.Load(out s_Config))
+      {
+        Debug.LogWarning("[neovim.ide] couldn't load saved config. Consider reseting the config via going to the "
+            + "top menu then: Neovim -> Settings -> Reset");
+      }
 
       // set some defaults in case they are not already set (launch cmd and args, open-file args, etc.)
       if (!SetDefaults())
