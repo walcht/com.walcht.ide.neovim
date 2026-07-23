@@ -99,6 +99,7 @@ namespace Neovim.Editor
       X11, // if we are on X11 - wmctrl solves our window focusing issues
       GNOME,  // GNOME (e.g., Ubuntu) on Wayland
       KDE,  // KDE on Wayland
+      Hyprland,
       OTHER,
       UNKNOWN,  // can't be determined :/
     }
@@ -404,6 +405,9 @@ namespace Neovim.Editor
           }
         }
       }
+      else if (s_LinuxPlatform == LinuxDesktopEnvironment.Hyprland) {
+        s_WindowFocusingAvailable = true;
+      }
 #elif UNITY_EDITOR_WIN
       s_WindowFocusingAvailable = true;
 #endif
@@ -422,19 +426,33 @@ namespace Neovim.Editor
 #if UNITY_EDITOR_LINUX
     private static LinuxDesktopEnvironment DetermineLinuxDesktopEnvironment()
     {
-      string val = Environment.GetEnvironmentVariable("XDG_DATA_DIRS");
-      if (val != null)
+      string session = Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"); // session can be x11, wayland or tty
+
+      if (session == "x11")
+        return LinuxDesktopEnvironment.X11;
+
+      if (session != "wayland")
+        return LinuxDesktopEnvironment.UNKNOWN;
+
+      string currentDesktop = Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP");
+
+      if (string.IsNullOrEmpty(currentDesktop))
+        return LinuxDesktopEnvironment.UNKNOWN;
+
+      //XDG_CURRENT_DESKTOP may have several values, so we check all of them
+      foreach (var de in currentDesktop.Split(':'))
       {
-        if (val.Contains("gnome", StringComparison.OrdinalIgnoreCase))
-        {
+        if (de.Equals("gnome", StringComparison.OrdinalIgnoreCase))
           return LinuxDesktopEnvironment.GNOME;
-        }
-        else
-        {
-          return LinuxDesktopEnvironment.OTHER;
-        }
+
+        if (de.Equals("kde", StringComparison.OrdinalIgnoreCase))
+          return LinuxDesktopEnvironment.KDE;
+
+        if (de.Equals("hyprland", StringComparison.OrdinalIgnoreCase))
+          return LinuxDesktopEnvironment.Hyprland;
       }
-      return LinuxDesktopEnvironment.UNKNOWN;
+
+      return LinuxDesktopEnvironment.OTHER;
     }
 #endif
 
@@ -927,6 +945,32 @@ namespace Neovim.Editor
             // TODO: add support for switching focus to Neovim on KDE Wayland
           }
           break;
+        case LinuxDesktopEnvironment.Hyprland:
+          {
+            using var p = ProcessUtils.HeadlessProcess();
+            p.StartInfo.FileName = "hyprctl";
+            p.StartInfo.Arguments =
+              $"eval 'hl.dispatch(hl.dsp.focus({{ window = \"initialtitle:nvimunity-{s_InstanceId}\"}}))'";
+
+            var error_msg =
+              $"[neovim.ide] failed to focus on Neovim server instance titled 'nvimunity-{s_InstanceId}'.\n"
+              + $"Reason: cmd `{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}` failed.\n";
+            try
+            {
+              p.RunWithAssertion(s_Config.ProcessTimeout);
+            }
+            catch (ExitCodeMismatchException)
+            {
+              Debug.LogWarning($"{error_msg}Reason: non-zero exit code.");
+            }
+            catch (TimeoutException)
+            {
+              Debug.LogWarning(
+                $"{error_msg}Exception message: timed out after {s_Config.ProcessTimeout} milliseconds."
+              );
+            }
+            break;
+          }
         default:
           // do nothing - too complicated to make it work on all desktop environments :/
           break;
