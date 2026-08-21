@@ -18,62 +18,35 @@ namespace Neovim.Editor
   [InitializeOnLoad]
   public class NeovimCodeEditor : IExternalCodeEditor
   {
+    // TODO: seperate class
     private static bool s_WindowFocusingAvailable = false;
 
-    public static NeovimEditorConfig s_Config = new NeovimEditorConfig();
+    private static NeovimEditorConfig s_Config = new NeovimEditorConfig();
 
     // Unique identifier for this Unity instance (PID)
     public static readonly string s_InstanceId = Process.GetCurrentProcess().Id.ToString();
 
 #if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-    static string s_ServerSocket = "/tmp/nvimsocket";
+    private static string s_ServerSocket = "/tmp/nvimsocket";
 #else // UNITY_EDITOR_WIN
     // this is initialized to some "127.0.0.1:<random-port>" because Unix domain sockets on Windows are a bitch
     // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
     // available for socket type" so we have to listen to a TCP socket instead with a local addr and a random port
-    static string s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
-    public static readonly string GetProcessWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessWindowHandle.ps1");
-    public static readonly string ReadWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/ReadWindowHandleFromPipeServer.ps1");
+    private static string s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
+    private static readonly string s_GetProcessWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessWindowHandle.ps1");
+    private static readonly string s_ReadWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/ReadWindowHandleFromPipeServer.ps1");
 #endif
-    public static readonly string RestartRoslynLSPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/RestartRoslynLS.lua");
+    public static readonly string s_RestartRoslynLSPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/RestartRoslynLS.lua");
+
+    public static NeovimEditorConfig Config
+    {
+      get => s_Config;
+    }
 
     public static string ServerSocket
     {
       get => s_ServerSocket;
     }
-
-    /// <summary>
-    ///   These are the default template arguments that one of which can potentially be used
-    ///   to send request to the Neovim server instance upon opening a file (or clicking on
-    ///   error message in console, etc). Depending on the modifier that is currently applied,
-    ///   different commands could be sent to the Neovim server instance (e.g., open in a new
-    ///   tab, or open in a vertical split, etc.). First entry is the default.
-    /// </summary>
-    public static readonly (string Args, string Name, string Desc)[] s_OpenFileArgsTemplates = {
-      ("--server {serverSocket} --remote-tab {filePath}",
-       "Open in new tab",
-       "Always opens the file in a new Neovim tab page."),
-      ("--server {serverSocket} --remote-send \":drop {filePath}<CR>\"",
-       "Open (reuse window)",
-       "Opens in current window. If file is already open somewhere — switches to it. No new tabs."),
-      ("--server {serverSocket} --remote-send \":vsplit {filePath}<CR>\"",
-       "Vertical split",
-       "Opens the file in a vertical split of the current window."),
-      ("--server {serverSocket} --remote-send \":split {filePath}<CR>\"",
-       "Horizontal split",
-       "Opens the file in a horizontal split of the current window."),
-    };
-
-    /// <summary>
-    ///   These are the default template arguments that one of which can potentially be used
-    ///   to send request to the Neovim server instance to jump to a given cursor position.
-    ///   First entry is the default.
-    /// </summary>
-    public static readonly (string Args, string Name, string Desc)[] s_JumpToCursorPositionArgsTemplates = {
-      ("--server {serverSocket} --remote-send \":call cursor({line},{column})<CR>\"",
-       "Jump to position via cursor call",
-       "Jumps to requested position in the current buffer using nvim lua cursor call."),
-    };
 
     // add your file extension here if you want it to be opened by Neovim via Unity
     static readonly string[] s_SupportedExtensions = {
@@ -112,55 +85,7 @@ namespace Neovim.Editor
     internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 #endif
 
-    // terminal launch command template - use this template for adding new launch cmds
-    public static readonly (string, string) s_TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}");
 
-    /// <summary>
-    /// Command that is passed to the Neovim server instance once it is instantiated. The variables here make sense
-    /// only if you are using CGNvim's Roslyn LS configuration (at https://github.com/walcht/CGNvim).
-    /// In case you are not, see how CGNvim uses them and implement them in your config.
-    /// If you are using WT then don't put semicolons here or it won't work. The great engineers at Microsoft decided
-    /// to interpret any semicolon character ';' as a command to open a new tab and there is no way to escape it.
-    /// </summary>
-    private static readonly string s_NvimCmdString = string.Join("", new string[] {
-      "--cmd \"",
-      ":lua _G.nvim_unity_user_supplied_project_root_dir='{projectRootDir}'",
-      "_G.nvim_unity_analyzer_diagnostic_scope='{analyzerDiagnosticScope}'",
-      "_G.nvim_unity_compiler_diagnostic_scope='{compilerDiagnosticScope}'\"" });
-
-    /// <summary>
-    /// List of neovim launch cmds from popular terminal emulators - this is just a hardcoded list so that non-tech-savy
-    /// users can just get to using Neovim with minimal friction.
-    /// </summary>
-    public static readonly (string, string)[] s_TermLaunchCmds =
-#if UNITY_EDITOR_LINUX
-    {
-      ("gnome-terminal", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} " + s_NvimCmdString ),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-      ("ptyxis", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-      ("xterm", "-T \"nvimunity-{instanceId}\" -e {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-    };
-#elif UNITY_EDITOR_OSX
-    {
-      ("/Applications/kitty.app/Contents/MacOS/kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-      ("/Applications/Alacritty.app/Contents/MacOS/alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-      ("/Applications/ghostty.app/Contents/MacOS/ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} " + s_NvimCmdString + "'"),
-      ("/Applications/iTerm.app/Contents/MacOS/iTerm2", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-      ("ghostty", "--title=\"nvimunity-{instanceId}\" --command='{app} {filePath} --listen {serverSocket} " + s_NvimCmdString + "'"),
-      ("kitty", "--title \"nvimunity-{instanceId}\" {app} {filePath} --listen {serverSocket} " + s_NvimCmdString),
-    };
-#else  // UNITY_EDITOR_WIN
-    {
-      // on Powershell, replace the ';' with "`;"
-      // also be aware that Windows Terminal (WT) interprets ';' as ANYWHERE as a command to open a new tab...
-      // go fucking figure why the most widely used terminal on Windows has not implemented a way to escape its symbolic
-      // characters: https://github.com/microsoft/terminal/issues/13264
-      ("wt", "nt {app} {filePath} --listen {serverSocket} " + s_NvimCmdString + "; nt Powershell -File {getProcessPPIDScriptPath}"),
-      ("alacritty", "--title \"nvimunity-{instanceId}\" --command {app} {filePath} --listen {serverSocket} " + s_NvimCmdString)
-    };
-#endif
 
     // Fallback Neovim installation paths (only used in case nvim executable path is not explicitly provided). The first
     // valid path is picked. "nvim(.exe)" is a special case where PATH is checked for its existence.
@@ -209,7 +134,7 @@ namespace Neovim.Editor
         // pick the first default available terminal from the list of 'popular' terminal emulators. Obviously this is
         // some sort of a heuristic but the user can explicitly change this through the GUI.
         bool s = false;
-        foreach (var termLaunch in s_TermLaunchCmds)
+        foreach (var termLaunch in TemplateCollection.TermLaunchCmdTemplates)
         {
           if (TryChangeTermLaunchCmd(termLaunch.Item1, termLaunch.Item2))
           {
@@ -237,23 +162,23 @@ namespace Neovim.Editor
 
       if (!s_Config.ModifierBindings.Any())
       {
-        if (!s_OpenFileArgsTemplates.Any())
+        if (!TemplateCollection.OpenFileArgTemplates.Any())
         {
           Debug.LogError($"[neovim.ide] open-file template list is empty");
         }
         s_Config.ModifierBindings = new System.Collections.Generic.List<ModifierBinding> {
-          new ModifierBinding() { Modifiers = 0, Args = s_OpenFileArgsTemplates[0].Args }
+          new ModifierBinding() { Modifiers = 0, Args = TemplateCollection.OpenFileArgTemplates[0].Args }
         };
         s_Config.Save();
       }
 
       if (string.IsNullOrWhiteSpace(s_Config.JumpToCursorPositionArgs))
       {
-        if (!s_JumpToCursorPositionArgsTemplates.Any())
+        if (!TemplateCollection.JumpToCursorPositionArgTemplates.Any())
         {
           Debug.LogError($"[neovim.ide] the jump-to-cursor-position arguments templates array is empty");
         }
-        s_Config.JumpToCursorPositionArgs = s_JumpToCursorPositionArgsTemplates[0].Args;
+        s_Config.JumpToCursorPositionArgs = TemplateCollection.JumpToCursorPositionArgTemplates[0].Args;
         s_Config.Save();
       }
 
@@ -682,7 +607,7 @@ namespace Neovim.Editor
           using (var proc = ProcessUtils.HeadlessProcess())
           {
             proc.StartInfo.FileName = "powershell";
-            proc.StartInfo.Arguments = $"-File {ReadWindowHandlePath}";
+            proc.StartInfo.Arguments = $"-File {s_ReadWindowHandlePath}";
             proc.RunWithAssertion(1000);
             var line = proc.StandardOutput.ReadLine();
             if (line != null)
@@ -735,7 +660,7 @@ namespace Neovim.Editor
             .Replace("{analyzerDiagnosticScope}", s_Config.AnalyzerDiagnosticScope.ToString())
             .Replace("{compilerDiagnosticScope}", s_Config.CompilerDiagnosticScope.ToString())
 #if UNITY_EDITOR_WIN
-            .Replace("{getProcessPPIDScriptPath}", GetProcessWindowHandlePath)
+            .Replace("{getProcessPPIDScriptPath}", s_GetProcessWindowHandlePath)
 #endif
           ;
 
@@ -804,7 +729,7 @@ namespace Neovim.Editor
         .FirstOrDefault(b => (b.Modifiers & relevantMask) == currentMods)
         ?? s_Config.ModifierBindings.FirstOrDefault(b => b.Modifiers == 0);
 
-      string openFileArgs = binding?.Args ?? s_OpenFileArgsTemplates[0].Args;
+      string openFileArgs = binding?.Args ?? TemplateCollection.OpenFileArgTemplates[0].Args;
 
       string args = openFileArgs
         .Replace("{serverSocket}", s_ServerSocket)
@@ -1086,7 +1011,7 @@ namespace Neovim.Editor
     /// <summary>
     /// Sends a remote command to the currenly running Neovim server instance to restart Roslyn LS.
     /// </summary>
-    public static void RestartRoslynLS() => SendNeovimCmd($":source {RestartRoslynLSPath}<CR>");
+    public static void RestartRoslynLS() => SendNeovimCmd($":source {s_RestartRoslynLSPath}<CR>");
 
 
   }

@@ -162,17 +162,17 @@ namespace Neovim.Editor
       s_ModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/modifier_binding.uxml");
       s_AnalyzerEntryVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/analyzer_entry.uxml");
 
-      s_OpenFileTemplateNames = NeovimCodeEditor.s_OpenFileArgsTemplates
+      s_OpenFileTemplateNames = TemplateCollection.OpenFileArgTemplates
         .Select(t => t.Name)
         .Append(k_CustomLabel)
         .ToList();
 
-      s_JumpToCursorPosTemplateNames = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
+      s_JumpToCursorPosTemplateNames = TemplateCollection.JumpToCursorPositionArgTemplates
         .Select(t => t.Name)
         .Append(k_CustomLabel)
         .ToList();
 
-      s_TermLaunchCmdTemplateNames = NeovimCodeEditor.s_TermLaunchCmds
+      s_TermLaunchCmdTemplateNames = TemplateCollection.TermLaunchCmdTemplates
         .Select(cmds => cmds.Item1)
         .Append(k_CustomLabel)
         .ToList();
@@ -227,10 +227,10 @@ namespace Neovim.Editor
       // nvim executable path args
       {
         m_NvimExecutablePathTf = mainPanel.Q<TextField>("nvim-exec-path-tf");
-        m_NvimExecutablePathTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
+        m_NvimExecutablePathTf.SetValueWithoutNotify(NeovimCodeEditor.Config.NvimExecutablePath);
         m_NvimExecutablePathTf.RegisterValueChangedCallback(e =>
         {
-          if (e.newValue == NeovimCodeEditor.s_Config.NvimExecutablePath)
+          if (e.newValue == NeovimCodeEditor.Config.NvimExecutablePath)
             return;
           SetDirty(true);
         });
@@ -245,9 +245,9 @@ namespace Neovim.Editor
         m_TermLaunchCmdTf = mainPanel.Q<TextField>("terminal-launch-cmd-tf");
         m_TermLaunchArgsTf = mainPanel.Q<TextField>("terminal-launch-args-tf");
         m_TermLaunchEnvTf = mainPanel.Q<TextField>("terminal-launch-env-tf");
-        m_TermLaunchCmdTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchCmd);
-        m_TermLaunchArgsTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchArgs);
-        m_TermLaunchEnvTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.TermLaunchEnv);
+        m_TermLaunchCmdTf.SetValueWithoutNotify(NeovimCodeEditor.Config.TermLaunchCmd);
+        m_TermLaunchArgsTf.SetValueWithoutNotify(NeovimCodeEditor.Config.TermLaunchArgs);
+        m_TermLaunchEnvTf.SetValueWithoutNotify(NeovimCodeEditor.Config.TermLaunchEnv);
 
         termLaunchDf.PlaceBehind(m_TermLaunchCmdTf);
         termLaunchDf.RegisterValueChangedCallback(e =>
@@ -256,7 +256,7 @@ namespace Neovim.Editor
           {
             return;
           }
-          var template = NeovimCodeEditor.s_TermLaunchCmds
+          var template = TemplateCollection.TermLaunchCmdTemplates
             .FirstOrDefault(t => t.Item1 == e.newValue);
           if (template.Item1 == null) return;
           m_TermLaunchCmdTf.value = template.Item1;
@@ -265,27 +265,27 @@ namespace Neovim.Editor
 
         m_TermLaunchCmdTf.RegisterValueChangedCallback(e =>
         {
-          var templateName = NeovimCodeEditor.s_TermLaunchCmds
+          var templateName = TemplateCollection.TermLaunchCmdTemplates
             .FirstOrDefault(t => (t.Item1 == e.newValue) && (t.Item2 == m_TermLaunchArgsTf.value)).Item1 ?? k_CustomLabel;
           termLaunchDf.SetValueWithoutNotify(templateName);
-          if (e.newValue == NeovimCodeEditor.s_Config.TermLaunchCmd)
+          if (e.newValue == NeovimCodeEditor.Config.TermLaunchCmd)
             return;
           SetDirty(true);
         });
 
         m_TermLaunchArgsTf.RegisterValueChangedCallback(e =>
         {
-          var templateName = NeovimCodeEditor.s_TermLaunchCmds
+          var templateName = TemplateCollection.TermLaunchCmdTemplates
             .FirstOrDefault(t => (t.Item2 == e.newValue) && (t.Item1 == m_TermLaunchCmdTf.value)).Item1 ?? k_CustomLabel;
           termLaunchDf.SetValueWithoutNotify(templateName);
-          if (e.newValue == NeovimCodeEditor.s_Config.TermLaunchArgs)
+          if (e.newValue == NeovimCodeEditor.Config.TermLaunchArgs)
             return;
           SetDirty(true);
         });
 
         m_TermLaunchEnvTf.RegisterValueChangedCallback(e =>
         {
-          if (e.newValue == NeovimCodeEditor.s_Config.TermLaunchEnv)
+          if (e.newValue == NeovimCodeEditor.Config.TermLaunchEnv)
             return;
           SetDirty(true);
         });
@@ -293,7 +293,7 @@ namespace Neovim.Editor
 
       // jumo-to-cursor-position
       {
-        string currArgs = NeovimCodeEditor.s_Config.JumpToCursorPositionArgs;
+        string currArgs = NeovimCodeEditor.Config.JumpToCursorPositionArgs;
         string currentTemplateName = GetJumpToCursorPosTemplateName(currArgs);
 
         var container = mainPanel.Q<VisualElement>("jump-to-cursor-pos-args");
@@ -309,7 +309,7 @@ namespace Neovim.Editor
         {
           string templateName = GetJumpToCursorPosTemplateName(e.newValue);
           templatesDd.SetValueWithoutNotify(templateName);
-          if (e.newValue == NeovimCodeEditor.s_Config.JumpToCursorPositionArgs)
+          if (e.newValue == NeovimCodeEditor.Config.JumpToCursorPositionArgs)
             return;
           SetDirty(true);
         });
@@ -321,7 +321,7 @@ namespace Neovim.Editor
             SetInfoPanel(null);
             return;
           }
-          var template = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
+          var template = TemplateCollection.JumpToCursorPositionArgTemplates
             .FirstOrDefault(t => t.Name == e.newValue);
           if (template.Name == null) return;
           m_JumpToCursorPosArgsTf.value = template.Args;
@@ -332,7 +332,7 @@ namespace Neovim.Editor
       // open-file request args
       {
         // deep-copy bindings so we don't mutate config until user clicks Update
-        m_ModifierBindings = NeovimCodeEditor.s_Config.ModifierBindings
+        m_ModifierBindings = NeovimCodeEditor.Config.ModifierBindings
           .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args, Representation = b.Representation })
           .ToList();
         m_ModifierBindingRows = mainPanel.Q<VisualElement>("modifier-binding-rows");
@@ -342,10 +342,10 @@ namespace Neovim.Editor
       // process timeout arg
       {
         m_ProcessTimeoutIf = mainPanel.Q<IntegerField>("process-timeout-if");
-        m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.ProcessTimeout);
+        m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.Config.ProcessTimeout);
         m_ProcessTimeoutIf.RegisterValueChangedCallback(e =>
         {
-          if (e.newValue == NeovimCodeEditor.s_Config.ProcessTimeout)
+          if (e.newValue == NeovimCodeEditor.Config.ProcessTimeout)
             return;
           SetDirty(true);
         });
@@ -399,19 +399,19 @@ namespace Neovim.Editor
       {
         m_AnalyzerDiagnosticScopeEf = mainPanel.Q<EnumField>("analyzer-diagnostic-scope-ef");
         m_CompilerDiagnosticScopeEf = mainPanel.Q<EnumField>("compiler-diagnostic-scope-ef");
-        m_AnalyzerDiagnosticScopeEf.Init(NeovimCodeEditor.s_Config.AnalyzerDiagnosticScope);
-        m_CompilerDiagnosticScopeEf.Init(NeovimCodeEditor.s_Config.CompilerDiagnosticScope);
+        m_AnalyzerDiagnosticScopeEf.Init(NeovimCodeEditor.Config.AnalyzerDiagnosticScope);
+        m_CompilerDiagnosticScopeEf.Init(NeovimCodeEditor.Config.CompilerDiagnosticScope);
 
         m_AnalyzerDiagnosticScopeEf.RegisterValueChangedCallback(e =>
         {
-          if ((RoslynDiagnosticScope)e.newValue == NeovimCodeEditor.s_Config.AnalyzerDiagnosticScope)
+          if ((RoslynDiagnosticScope)e.newValue == NeovimCodeEditor.Config.AnalyzerDiagnosticScope)
             return;
           SetDirty(true);
         });
 
         m_CompilerDiagnosticScopeEf.RegisterValueChangedCallback(e =>
         {
-          if ((RoslynDiagnosticScope)e.newValue == NeovimCodeEditor.s_Config.CompilerDiagnosticScope)
+          if ((RoslynDiagnosticScope)e.newValue == NeovimCodeEditor.Config.CompilerDiagnosticScope)
             return;
           SetDirty(true);
         });
@@ -430,7 +430,7 @@ namespace Neovim.Editor
 #else
         mainPanel.Q<VisualElement>("processpid-placeholder").RemoveFromHierarchy();
 #endif
-        m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
+        m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.Config.NvimExecutablePath);
         m_ServerSocketTf.SetValueWithoutNotify(NeovimCodeEditor.ServerSocket);
         m_InstanceIdTf.SetValueWithoutNotify(NeovimCodeEditor.s_InstanceId);
         mainPanel.Q<TextField>("project-root-dir-placeholder-tf").SetValueWithoutNotify(
@@ -456,8 +456,8 @@ namespace Neovim.Editor
       NeovimCodeEditor.CsprojFlags = flags;
 
       // update nvim executable path
-      m_NvimExecutablePathTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath = m_NvimExecutablePathTf.value);
-      m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.NvimExecutablePath);
+      m_NvimExecutablePathTf.SetValueWithoutNotify(NeovimCodeEditor.Config.NvimExecutablePath = m_NvimExecutablePathTf.value);
+      m_AppPlaceholderTf.SetValueWithoutNotify(NeovimCodeEditor.Config.NvimExecutablePath);
 
       // update terminal launch cmd shit
       if (!NeovimCodeEditor.TryChangeTermLaunchCmd(m_TermLaunchCmdTf.value, m_TermLaunchArgsTf.value, m_TermLaunchEnvTf.value))
@@ -466,15 +466,15 @@ namespace Neovim.Editor
       }
 
       // update open-file request modifier bindings args
-      NeovimCodeEditor.s_Config.ModifierBindings = m_ModifierBindings
+      NeovimCodeEditor.Config.ModifierBindings = m_ModifierBindings
         .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args, Representation = b.Representation })
         .ToList();
 
       // update jumo-to-cursor-position args
-      m_JumpToCursorPosArgsTf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.JumpToCursorPositionArgs = m_JumpToCursorPosArgsTf.value);
+      m_JumpToCursorPosArgsTf.SetValueWithoutNotify(NeovimCodeEditor.Config.JumpToCursorPositionArgs = m_JumpToCursorPosArgsTf.value);
 
       // update process timeout
-      m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.s_Config.ProcessTimeout = m_ProcessTimeoutIf.value);
+      m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.Config.ProcessTimeout = m_ProcessTimeoutIf.value);
 
       // Roslyn LS settings
       m_AnalyzerDiagnosticScopeEf.SetValueWithoutNotify(NeovimCodeEditor.SetAnalyzerDiagnosticScope((RoslynDiagnosticScope)m_AnalyzerDiagnosticScopeEf.value));
@@ -482,7 +482,7 @@ namespace Neovim.Editor
       NeovimCodeEditor.RestartRoslynLS();
 
       // serialize the config shit
-      NeovimCodeEditor.s_Config.Save();
+      NeovimCodeEditor.Config.Save();
 
       SetDirty(false);
     }
@@ -513,7 +513,7 @@ namespace Neovim.Editor
       m_ModifierBindings.Add(new ModifierBinding
       {
         Modifiers = nextAvailableModifier,
-        Args = NeovimCodeEditor.s_OpenFileArgsTemplates[0].Args,
+        Args = TemplateCollection.OpenFileArgTemplates[0].Args,
         Representation = representation
       });
       SetDirty(true);
@@ -532,7 +532,7 @@ namespace Neovim.Editor
 
     private static string GetJumpToCursorPosTemplateName(string args)
     {
-      var (Args, Name, Desc) = NeovimCodeEditor.s_JumpToCursorPositionArgsTemplates
+      var (Args, Name, Desc) = TemplateCollection.JumpToCursorPositionArgTemplates
         .FirstOrDefault(t => t.Args == args);
       return Name ?? k_CustomLabel;
     }
@@ -556,7 +556,7 @@ namespace Neovim.Editor
     private void RebuildAnalyzerRows()
     {
       m_AnalyzerRows.Clear();
-      if (!NeovimCodeEditor.s_Config.Analyzers.Any())
+      if (!NeovimCodeEditor.Config.Analyzers.Any())
       {
         m_AnalyzerRowsParent.visible = false;
         return;
@@ -564,7 +564,7 @@ namespace Neovim.Editor
 
       m_AnalyzerRowsParent.visible = true;
       // show currently used custom analyzers
-      for (int i = NeovimCodeEditor.s_Config.Analyzers.Count - 1; i >= 0; --i)
+      for (int i = NeovimCodeEditor.Config.Analyzers.Count - 1; i >= 0; --i)
       {
         int j = i;
         VisualElement row = s_AnalyzerEntryVT.CloneTree();
@@ -572,8 +572,8 @@ namespace Neovim.Editor
         var analyzerPathLabel = row.Q<Label>("analyzer-path");
         var deleteBtn = row.Q<Button>("delete-btn");
 
-        analyzerNameLabel.text = $"{Path.GetFileNameWithoutExtension(NeovimCodeEditor.s_Config.Analyzers[j])}:";
-        analyzerPathLabel.text = NeovimCodeEditor.s_Config.Analyzers[j];
+        analyzerNameLabel.text = $"{Path.GetFileNameWithoutExtension(NeovimCodeEditor.Config.Analyzers[j])}:";
+        analyzerPathLabel.text = NeovimCodeEditor.Config.Analyzers[j];
 
         deleteBtn.clicked += () =>
         {
@@ -669,7 +669,7 @@ namespace Neovim.Editor
         // update the info pannel on selection
         templateDd.RegisterCallback<FocusEvent>(_ =>
         {
-          var template = NeovimCodeEditor.s_OpenFileArgsTemplates
+          var template = TemplateCollection.OpenFileArgTemplates
                       .FirstOrDefault(t => t.Name == templateDd.value);
           if (template.Name == null) return;
           SetInfoPanel(template);
@@ -682,7 +682,7 @@ namespace Neovim.Editor
             SetInfoPanel(null);
             return;
           }
-          var template = NeovimCodeEditor.s_OpenFileArgsTemplates
+          var template = TemplateCollection.OpenFileArgTemplates
             .FirstOrDefault(t => t.Name == e.newValue);
           if (template.Name == null) return;
           argsField.value = template.Args;
