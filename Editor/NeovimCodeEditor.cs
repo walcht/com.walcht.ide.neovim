@@ -192,6 +192,71 @@ namespace Neovim.Editor
       // initialize with project regeneration flags from config
       s_Generator = new ProjectGeneration(s_Config.CsprojFlags, s_Config.Analyzers);
 
+      s_DiscoveredNeovimInstallations = DiscoverNeovim();
+
+      // do NOT proceed if there aren't any discovered Neovim installations (i.e., not explicitly supplied in settings
+      // and not installed in a common path).
+      if (!s_DiscoveredNeovimInstallations.Any())
+      {
+        Debug.LogWarning("[neovim.ide] no Neovim installation was discovered. Consider explicitly providing an nvim "
+            + "executable path via top menu: Neovim -> Settings");
+        // TODO: show setting window
+        return;
+      }
+
+      // we use the first discovered/set nvim installation path
+      s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
+
+      // Unity may launch multiple separate threads (worker threads) during installation. 
+      // To everything work properly, we must register the editor and initialize the Installations field in each worker.
+      NeovimCodeEditor editor = new NeovimCodeEditor(s_Generator);
+      CodeEditor.Register(editor);
+
+      // However, to avoid duplicating RPC connections, focus providers, etc., we initialize them only
+      // on the main thread by checking 'AssetDatabase.IsAssetImportWorkerProcess()' in this method
+      InitializeInternal();
+    }
+
+    /// <summary>
+    /// Performs post-registration initialization for singleton-bound resources.
+    /// </summary>
+    /// <remarks>
+    /// Intended for setting up shared system resources that must only exist in a single instance,
+    /// such as the RPC connection, event listeners, and OS window focusing services.
+    /// </remarks>
+    private static void InitializeInternal()
+    {
+      // proceed only if in main thread
+      if (AssetDatabase.IsAssetImportWorkerProcess())
+        return;
+
+      // TODO: MPE
+
+#if UNITY_EDITOR_LINUX
+      s_NeovimFocus = new LinuxNeovimWindowFocus();
+#elif UNITY_EDITOR_WIN
+      s_NeovimFocus = new WindowsNeovimWindowFocus(s_ReadWindowHandlePath);
+#else
+      s_NeovimFocus = new FallbackNeovimWindowFocus();
+#endif
+
+    }
+
+    /// <summary>
+    /// Discovers available Neovim installations.
+    /// </summary>
+    /// <remarks>
+    /// Validates the user-configured executable path first. If invalid or not set,
+    /// falls back to scanning predefined candidate paths on the system.
+    /// </remarks>
+    /// <returns>
+    /// An array of discovered <see cref="CodeEditor.Installation"/> instances,
+    /// or an empty array if no valid installations are found.
+    /// </returns>
+    private static CodeEditor.Installation[] DiscoverNeovim()
+    {
+      CodeEditor.Installation[] installations = new CodeEditor.Installation[0];
+
       // if nvim executable path is already set in the config - check if it is still valid
       if (!string.IsNullOrWhiteSpace(s_Config.NvimExecutablePath))
       {
@@ -199,7 +264,7 @@ namespace Neovim.Editor
         if (File.Exists(s_Config.NvimExecutablePath)
             && (v = GetNeovimVersion(s_Config.NvimExecutablePath)) != "v-unknown")
         {
-          s_DiscoveredNeovimInstallations = new CodeEditor.Installation[] { new CodeEditor.Installation() {
+          installations = new CodeEditor.Installation[] { new CodeEditor.Installation() {
             Name = $"Neovim {v}",
             Path = s_Config.NvimExecutablePath
           }};
@@ -215,9 +280,9 @@ namespace Neovim.Editor
       // initialize the discovered Neovim installations array. The first 'path' is usually set to "nvim"
       // (or "nvim.exe"). That is obviously not a path but the expected name of Neovim on PATH (which is what the
       // CmdPath does here).
-      if (!s_DiscoveredNeovimInstallations.Any())
+      if (!installations.Any())
       {
-        s_DiscoveredNeovimInstallations = s_CandidateNeovimPaths
+        installations = s_CandidateNeovimPaths
           .Select(p => p = Path.IsPathRooted(p) ? p : ProcessUtils.CmdPath(p, s_Config.ProcessTimeout))
           .Where(p => p != null && File.Exists(p))
           .Select(p =>
@@ -231,30 +296,7 @@ namespace Neovim.Editor
           .ToArray();
       }
 
-      // do NOT proceed if there aren't any discovered Neovim installations (i.e., not explicitly supplied in settings
-      // and not installed in a common path).
-      if (!s_DiscoveredNeovimInstallations.Any())
-      {
-        Debug.LogWarning("[neovim.ide] no Neovim installation was discovered. Consider explicitly providing an nvim "
-            + "executable path via top menu: Neovim -> Settings");
-        // TODO: show setting window
-        return;
-      }
-
-      // we use the first discovered/set nvim installation path
-      s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
-
-      // TODO: enshure s_Config doesnt change
-#if UNITY_EDITOR_LINUX
-      s_NeovimFocus = new LinuxNeovimWindowFocus(s_Config);
-#elif UNITY_EDITOR_WIN
-      s_NeovimFocus = new WindowsNeovimWindowFocus(s_Config, s_ReadWindowHandlePath);
-#else
-      s_NeovimFocus = new FallbackNeovimWindowFocus();
-#endif
-
-      NeovimCodeEditor editor = new NeovimCodeEditor(s_Generator);
-      CodeEditor.Register(editor);
+      return installations;
     }
 
 

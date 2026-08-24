@@ -37,25 +37,23 @@ namespace Neovim.Editor
   {
     private readonly LinuxDesktopEnvironment m_CurrentEnvironment;
     private readonly INeovimWindowFocus m_ConcreteFocus;
-    private readonly NeovimEditorConfig m_Conig;
 
     public bool IsAvailable => m_ConcreteFocus.IsAvailable;
 
-    public LinuxNeovimWindowFocus(NeovimEditorConfig config)
+    public LinuxNeovimWindowFocus()
     {
-      m_Conig = config;
       m_CurrentEnvironment = DetermineLinuxDesktopEnvironment();
 
       switch (m_CurrentEnvironment)
       {
         case LinuxDesktopEnvironment.X11:
-          m_ConcreteFocus = new X11NeovimWindowFocus(config);
+          m_ConcreteFocus = new X11NeovimWindowFocus();
           break;
         case LinuxDesktopEnvironment.GNOME:
-          m_ConcreteFocus = new GnomeNeovimWindowFocus(config);
+          m_ConcreteFocus = new GnomeNeovimWindowFocus();
           break;
         case LinuxDesktopEnvironment.Hyprland:
-          m_ConcreteFocus = new HyprlandNeovimWindowFocus(config);
+          m_ConcreteFocus = new HyprlandNeovimWindowFocus();
           break;
         case LinuxDesktopEnvironment.KDE: // TODO: KDE focus implementation
         default:
@@ -105,14 +103,10 @@ namespace Neovim.Editor
   // TODO: check if wmctrl is available on the system
   public class X11NeovimWindowFocus : INeovimWindowFocus
   {
-    private readonly NeovimEditorConfig m_Config;
-
     public bool IsAvailable { get; private set; }
 
-    public X11NeovimWindowFocus(NeovimEditorConfig config)
+    public X11NeovimWindowFocus()
     {
-      m_Config = config;
-
       CheckAvailability();
     }
 
@@ -129,7 +123,7 @@ namespace Neovim.Editor
         + $"Reason: cmd `{p.StartInfo.FileName}` with args `{p.StartInfo.Arguments}` failed.\n";
       try
       {
-        p.RunWithAssertion(m_Config.ProcessTimeout);
+        p.RunWithAssertion(NeovimCodeEditor.Config.ProcessTimeout);
       }
       catch (ExitCodeMismatchException)
       {
@@ -138,14 +132,14 @@ namespace Neovim.Editor
       catch (TimeoutException)
       {
         Debug.LogWarning(
-          $"{error_msg}Exception message: timed out after {m_Config.ProcessTimeout} milliseconds."
+          $"{error_msg}Exception message: timed out after {NeovimCodeEditor.Config.ProcessTimeout} milliseconds."
         );
       }
     }
 
     private void CheckAvailability()
     {
-      if (ProcessUtils.CmdPath("wmctrl", m_Config.ProcessTimeout) == null)
+      if (ProcessUtils.CmdPath("wmctrl", NeovimCodeEditor.Config.ProcessTimeout) == null)
       {
         Debug.LogWarning(
           "[neovim.ide] neovim window focusing feature is not available \n"
@@ -163,14 +157,10 @@ namespace Neovim.Editor
 
   public class GnomeNeovimWindowFocus : INeovimWindowFocus
   {
-    private readonly NeovimEditorConfig m_Config;
-
     public bool IsAvailable { get; private set; }
 
-    public GnomeNeovimWindowFocus(NeovimEditorConfig config)
+    public GnomeNeovimWindowFocus()
     {
-      m_Config = config;
-
       CheckAvailability();
     }
 
@@ -192,7 +182,7 @@ namespace Neovim.Editor
         + "Did you install the 'activate-window-by-title@lucaswerkmeister.de' GNOME extension?\n";
       try
       {
-        p.RunWithAssertion(m_Config.ProcessTimeout);
+        p.RunWithAssertion(NeovimCodeEditor.Config.ProcessTimeout);
       }
       catch (ExitCodeMismatchException)
       {
@@ -201,7 +191,7 @@ namespace Neovim.Editor
       catch (TimeoutException)
       {
         Debug.LogWarning(
-          $"{error_msg}Exception message: timed out after {m_Config.ProcessTimeout} milliseconds."
+          $"{error_msg}Exception message: timed out after {NeovimCodeEditor.Config.ProcessTimeout} milliseconds."
         );
       }
     }
@@ -256,14 +246,7 @@ namespace Neovim.Editor
 
   public class HyprlandNeovimWindowFocus : INeovimWindowFocus
   {
-    private readonly NeovimEditorConfig m_Config;
-
     public bool IsAvailable => true;
-
-    public HyprlandNeovimWindowFocus(NeovimEditorConfig config)
-    {
-      m_Config = config;
-    }
 
     public void Focus()
     {
@@ -278,7 +261,7 @@ namespace Neovim.Editor
 
       try
       {
-        p.RunWithAssertion(m_Config.ProcessTimeout);
+        p.RunWithAssertion(NeovimCodeEditor.Config.ProcessTimeout);
       }
       catch (ExitCodeMismatchException)
       {
@@ -287,7 +270,7 @@ namespace Neovim.Editor
       catch (TimeoutException)
       {
         Debug.LogWarning(
-          $"{error_msg}Exception message: timed out after {m_Config.ProcessTimeout} milliseconds."
+          $"{error_msg}Exception message: timed out after {NeovimCodeEditor.Config.ProcessTimeout} milliseconds."
         );
       }
     }
@@ -298,13 +281,11 @@ namespace Neovim.Editor
   public class WindowsNeovimWindowFocus : INeovimWindowFocus
   {
     private readonly string m_ReadWindowHandlePath;
-    private readonly NeovimEditorConfig m_Config;
 
     public bool IsAvailable { get; private set; }
 
-    public WindowsNeovimWindowFocus(NeovimEditorConfig config, string readWindowHandlePath)
+    public WindowsNeovimWindowFocus(string readWindowHandlePath)
     {
-      m_Config = config;
       m_ReadWindowHandlePath = readWindowHandlePath;
     }
 
@@ -313,7 +294,7 @@ namespace Neovim.Editor
       if (!IsAvailable)
         return;
 
-      IntPtr windowHandle = new IntPtr(Convert.ToInt64(m_Config.PrevServerProcessIntPtrStringRepr));
+      IntPtr windowHandle = new IntPtr(Convert.ToInt64(NeovimCodeEditor.Config.PrevServerProcessIntPtrStringRepr));
       ShowWindow(windowHandle, 5); // 5 == Activates the window and displays it in its current size and position
       SetForegroundWindow(windowHandle);
     }
@@ -340,8 +321,8 @@ namespace Neovim.Editor
       try
       {
         IntPtr wh = ProcessUtils.GetWindowHandle(p, process_startup_timeout);
-        m_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
-        m_Config.Save();
+        NeovimCodeEditor.Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
+        NeovimCodeEditor.Config.Save();
       }
       // this probably means that the terminal launch cmd spawns a new child instance that is responsible for the Neovim
       // window (e.g., WT).
@@ -362,8 +343,8 @@ namespace Neovim.Editor
             if (line != null)
             {
               IntPtr wh = new IntPtr(Convert.ToInt64(line));
-              m_Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
-              m_Config.Save();
+              NeovimCodeEditor.Config.PrevServerProcessIntPtrStringRepr = wh.ToString();
+              NeovimCodeEditor.Config.Save();
             }
             else
             {
