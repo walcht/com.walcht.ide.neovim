@@ -3,41 +3,40 @@ namespace Neovim.Editor
   public static class TemplateCollection
   {
     /// <summary>
-    ///   These are the default template arguments that one of which can potentially be used
+    ///   These are the default template commands that one of which can potentially be used
     ///   to send request to the Neovim server instance upon opening a file (or clicking on
     ///   error message in console, etc). Depending on the modifier that is currently applied,
     ///   different commands could be sent to the Neovim server instance (e.g., open in a new
     ///   tab, or open in a vertical split, etc.). First entry is the default.
     /// </summary>
-    public static readonly (string Args, string Name, string Desc)[] OpenFileArgTemplates = {
-      ("--server {serverSocket} --remote-tab {filePath}",
+    public static readonly (string Command, string Name, string Desc)[] OpenFileCmdTemplates = {
+      ("tabnew {filepath}",
        "Open in new tab",
        "Always opens the file in a new Neovim tab page."),
-      ("--server {serverSocket} --remote-send \":drop {filePath}<CR>\"",
+      ("drop {filePath}",
        "Open (reuse window)",
        "Opens in current window. If file is already open somewhere — switches to it. No new tabs."),
-      ("--server {serverSocket} --remote-send \":vsplit {filePath}<CR>\"",
+      ("vsplit {filePath}",
        "Vertical split",
        "Opens the file in a vertical split of the current window."),
-      ("--server {serverSocket} --remote-send \":split {filePath}<CR>\"",
+      ("split {filePath}",
        "Horizontal split",
        "Opens the file in a horizontal split of the current window."),
     };
 
     /// <summary>
-    ///   These are the default template arguments that one of which can potentially be used
+    ///   These are the default template commands that one of which can potentially be used
     ///   to send request to the Neovim server instance to jump to a given cursor position.
     ///   First entry is the default.
     /// </summary>
-    public static readonly (string Args, string Name, string Desc)[] JumpToCursorPositionArgTemplates = {
-      ("--server {serverSocket} --remote-send \":call cursor({line},{column})<CR>\"",
+    public static readonly (string Command, string Name, string Desc)[] JumpToCursorPositionCmdTemplates = {
+      ("call cursor({line},{column})",
        "Jump to position via cursor call",
        "Jumps to requested position in the current buffer using nvim lua cursor call."),
     };
 
-    // NOTE: unsed?
-    // // terminal launch command template - use this template for adding new launch cmds
-    // public static readonly (string, string) TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}");
+    // terminal launch command template - use this template for adding new launch cmds
+    public static readonly (string, string) TermLaunchCmdTemplate = ("<terminal-emulator>", "--title \"nvimunity-{instanceId}\" -- {app} {filePath} --listen {serverSocket}");
 
     /// <summary>
     /// List of neovim launch cmds from popular terminal emulators - this is just a hardcoded list so that non-tech-savy

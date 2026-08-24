@@ -31,9 +31,9 @@ namespace Neovim.Editor
 
 
     /// <summary>
-    /// Arguments associated with this binding that will be supplied to nvim remote command.
+    /// Neovim command associated with this binding that will be sent to nvim.
     /// </summary>
-    public string Args = string.Empty;
+    public string Command = string.Empty;
   }
 
   public class NeovimEditorConfig
@@ -284,7 +284,7 @@ namespace Neovim.Editor
             var nodeObj = new JSONObject();
             nodeObj.Add("Modifiers", new JSONNumber(m_ModifierBindings[i].Modifiers));
             nodeObj.Add("Representation", new JSONString(m_ModifierBindings[i].Representation));
-            nodeObj.Add("Args", new JSONString(m_ModifierBindings[i].Args));
+            nodeObj.Add("Args", new JSONString(m_ModifierBindings[i].Command));
             nodeArray.Add(null, nodeObj);
           }
           node.Add("ModifierBindings", nodeArray);
@@ -360,7 +360,7 @@ namespace Neovim.Editor
             {
               Modifiers = (int)d["ModifierBindings"][i]["Modifiers"].AsULong,
               Representation = d["ModifierBindings"][i]["Representation"].Value,
-              Args = d["ModifierBindings"][i]["Args"].Value
+              Command = d["ModifierBindings"][i]["Args"].Value
             };
             config.ModifierBindings.Add(mb);
           }

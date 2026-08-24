@@ -162,12 +162,12 @@ namespace Neovim.Editor
       s_ModifierBindingVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/modifier_binding.uxml");
       s_AnalyzerEntryVT = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.walcht.ide.neovim/Editor/analyzer_entry.uxml");
 
-      s_OpenFileTemplateNames = TemplateCollection.OpenFileArgTemplates
+      s_OpenFileTemplateNames = TemplateCollection.OpenFileCmdTemplates
         .Select(t => t.Name)
         .Append(k_CustomLabel)
         .ToList();
 
-      s_JumpToCursorPosTemplateNames = TemplateCollection.JumpToCursorPositionArgTemplates
+      s_JumpToCursorPosTemplateNames = TemplateCollection.JumpToCursorPositionCmdTemplates
         .Select(t => t.Name)
         .Append(k_CustomLabel)
         .ToList();
@@ -321,10 +321,10 @@ namespace Neovim.Editor
             SetInfoPanel(null);
             return;
           }
-          var template = TemplateCollection.JumpToCursorPositionArgTemplates
+          var template = TemplateCollection.JumpToCursorPositionCmdTemplates
             .FirstOrDefault(t => t.Name == e.newValue);
           if (template.Name == null) return;
-          m_JumpToCursorPosArgsTf.value = template.Args;
+          m_JumpToCursorPosArgsTf.value = template.Command;
           SetInfoPanel(template);
         });
       }
@@ -333,7 +333,7 @@ namespace Neovim.Editor
       {
         // deep-copy bindings so we don't mutate config until user clicks Update
         m_ModifierBindings = NeovimCodeEditor.Config.ModifierBindings
-          .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args, Representation = b.Representation })
+          .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Command = b.Command, Representation = b.Representation })
           .ToList();
         m_ModifierBindingRows = mainPanel.Q<VisualElement>("modifier-binding-rows");
         RebuildModifierBindingRows();
@@ -467,7 +467,7 @@ namespace Neovim.Editor
 
       // update open-file request modifier bindings args
       NeovimCodeEditor.Config.ModifierBindings = m_ModifierBindings
-        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Args = b.Args, Representation = b.Representation })
+        .Select(b => new ModifierBinding { Modifiers = b.Modifiers, Command = b.Command, Representation = b.Representation })
         .ToList();
 
       // update jumo-to-cursor-position args
@@ -513,7 +513,7 @@ namespace Neovim.Editor
       m_ModifierBindings.Add(new ModifierBinding
       {
         Modifiers = nextAvailableModifier,
-        Args = TemplateCollection.OpenFileArgTemplates[0].Args,
+        Command = TemplateCollection.OpenFileCmdTemplates[0].Command,
         Representation = representation
       });
       SetDirty(true);
@@ -532,8 +532,8 @@ namespace Neovim.Editor
 
     private static string GetJumpToCursorPosTemplateName(string args)
     {
-      var (Args, Name, Desc) = TemplateCollection.JumpToCursorPositionArgTemplates
-        .FirstOrDefault(t => t.Args == args);
+      var (Args, Name, Desc) = TemplateCollection.JumpToCursorPositionCmdTemplates
+        .FirstOrDefault(t => t.Command == args);
       return Name ?? k_CustomLabel;
     }
 
@@ -645,7 +645,7 @@ namespace Neovim.Editor
         }
 
         // template dropdown
-        string currentTemplateName = GetJumpToCursorPosTemplateName(binding.Args);
+        string currentTemplateName = GetJumpToCursorPosTemplateName(binding.Command);
 
         // since PopupField is not supported in UXML we have to create it and add it.
         // to make it clear where it is added, we keep a VisualElement that will be replaced by it.
@@ -664,12 +664,12 @@ namespace Neovim.Editor
 
         // args text field
         var argsField = row.Q<TextField>("args-tf");
-        argsField.SetValueWithoutNotify(binding.Args);
+        argsField.SetValueWithoutNotify(binding.Command);
 
         // update the info pannel on selection
         templateDd.RegisterCallback<FocusEvent>(_ =>
         {
-          var template = TemplateCollection.OpenFileArgTemplates
+          var template = TemplateCollection.OpenFileCmdTemplates
                       .FirstOrDefault(t => t.Name == templateDd.value);
           if (template.Name == null) return;
           SetInfoPanel(template);
@@ -682,17 +682,17 @@ namespace Neovim.Editor
             SetInfoPanel(null);
             return;
           }
-          var template = TemplateCollection.OpenFileArgTemplates
+          var template = TemplateCollection.OpenFileCmdTemplates
             .FirstOrDefault(t => t.Name == e.newValue);
           if (template.Name == null) return;
-          argsField.value = template.Args;
-          m_ModifierBindings[idx].Args = template.Args;
+          argsField.value = template.Command;
+          m_ModifierBindings[idx].Command = template.Command;
           SetInfoPanel(template);
         });
 
         argsField.RegisterValueChangedCallback(e =>
         {
-          m_ModifierBindings[idx].Args = e.newValue;
+          m_ModifierBindings[idx].Command = e.newValue;
           // if user edited manually, update dropdown to Custom
           if (GetJumpToCursorPosTemplateName(e.newValue) == k_CustomLabel)
             templateDd.SetValueWithoutNotify(k_CustomLabel);

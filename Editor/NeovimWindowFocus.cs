@@ -100,7 +100,6 @@ namespace Neovim.Editor
     }
   }
 
-  // TODO: check if wmctrl is available on the system
   public class X11NeovimWindowFocus : INeovimWindowFocus
   {
     public bool IsAvailable { get; private set; }
