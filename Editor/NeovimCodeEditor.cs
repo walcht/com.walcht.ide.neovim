@@ -93,7 +93,7 @@ namespace Neovim.Editor
     private static NeovimRpcClient s_RpcClient = null;
 
     private const double k_ConnectionTimeout = 2d;
-    private const double k_ConnectionAttemptPause = 400d;
+    private const double k_ConnectionAttemptPause = 0.4d;
 
     private static bool s_ConnectionPending = false;
     private static double s_ConnectionLastAttemptTime = 0d;
@@ -766,24 +766,28 @@ namespace Neovim.Editor
       Debug.Log("con tick");
 
       var currentTime = EditorApplication.timeSinceStartup;
+
+      // timeout
+      if (currentTime - s_ConnectionAttemptsStartTime >= k_ConnectionTimeout)
+      {
+        Debug.Log("con timeout");
+        s_ConnectionPending = false;
+        return;
+      }
+
       var timePassed = currentTime - s_ConnectionLastAttemptTime;
+      // pause
       if (timePassed <= k_ConnectionAttemptPause)
       {
         Debug.Log("con pause not");
         return;
       }
 
+      // connect attempt
       s_ConnectionLastAttemptTime = currentTime;
       if (TryInitializeRpcClient())
       {
         Debug.Log("con init true");
-        s_ConnectionPending = false;
-        return;
-      }
-
-      if (currentTime - s_ConnectionAttemptsStartTime >= k_ConnectionTimeout)
-      {
-        Debug.Log("con timeout");
         s_ConnectionPending = false;
       }
     }
