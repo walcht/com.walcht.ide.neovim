@@ -1,5 +1,6 @@
 #pragma warning disable IDE0130, IDE0300, IDE0090, IDE0063, IDE0057
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Diagnostics;
@@ -85,14 +86,18 @@ namespace Neovim.Editor
      };
 #endif
 
+    private static readonly ConcurrentQueue<Action> s_ExecutionQueue = new ConcurrentQueue<Action>();
+    private static readonly NeovimCodeEditor s_NeovimCodeEditor = null;
     private static IGenerator s_Generator = null;
     private static INeovimWindowFocus s_NeovimFocus = null;
     private static NeovimRpcClient s_RpcClient = null;
 
-    public static IGenerator Generator
-    {
-      get { return s_Generator; }
-    }
+    private const double k_ConnectionTimeout = 2d;
+    private const double k_ConnectionAttemptPause = 400d;
+
+    private static bool s_ConnectionPending = false;
+    private static double s_ConnectionLastAttemptTime = 0d;
+    private static double s_ConnectionAttemptsStartTime = 0d;
 
     /// <summary>
     /// Sets the default terminal launch command, terminal launch arguments, open-file request arguments,
@@ -214,10 +219,10 @@ namespace Neovim.Editor
       // we use the first discovered/set nvim installation path
       s_Config.NvimExecutablePath = s_DiscoveredNeovimInstallations.First().Path;
 
-      // Unity may launch multiple separate threads (worker threads) during installation. 
+      // Unity may launch multiple separate threads (worker threads) during installation.
       // To everything work properly, we must register the editor and initialize the Installations field in each worker.
-      NeovimCodeEditor editor = new NeovimCodeEditor(s_Generator);
-      CodeEditor.Register(editor);
+      s_NeovimCodeEditor = new NeovimCodeEditor(s_Generator);
+      CodeEditor.Register(s_NeovimCodeEditor);
 
       // However, to avoid duplicating RPC connections, focus providers, etc., we initialize them only
       // on the main thread by checking 'AssetDatabase.IsAssetImportWorkerProcess()' in this method
@@ -249,6 +254,7 @@ namespace Neovim.Editor
 
       EditorApplication.quitting += CleanupResources;
       AssemblyReloadEvents.beforeAssemblyReload += CleanupResources;
+      EditorApplication.update += Update;
 
       // Try to connect during initialization. If the connection is successful,
       // nvim is already open; otherwise, it will be initialized when project opens
@@ -506,6 +512,33 @@ namespace Neovim.Editor
       }
     }
 
+    private static bool TryInitializeRpcClientAndExecute(Func<bool> action)
+    {
+      // try using the existing client
+      if (s_RpcClient != null)
+      {
+        if (action())
+          return true;
+
+        Debug.Log("Dest 1");
+        DestroyClient();
+      }
+
+      // try to (re)init the client
+      if (TryInitializeRpcClient())
+      {
+        Debug.Log("Conn 2");
+        if (action())
+          return true;
+
+        DestroyClient();
+      }
+
+      Debug.Log("exec failed");
+      // cant connect, probably nvim isnt running
+      return false;
+    }
+
     private static void DestroyClient()
     {
       Debug.Log("Destroy");
@@ -519,7 +552,7 @@ namespace Neovim.Editor
     }
 
     /// <summary>
-    /// 
+    ///
     /// </summary>
     /// <param name="filePath"></param>
     /// <returns>whether the nvim server instance is successfully instantied.</returns>
@@ -579,6 +612,10 @@ namespace Neovim.Editor
           // start and do not care (do not wait for exit)
           p.Start();
 
+          // NOTE: Because it takes some time to init socket, we cannot create RPC connection immediately after nvim starts.
+          // To avoid complicated async stuff, we simply tie connection attempts to Unity's update method
+          s_ConnectionPending = true;
+          s_ConnectionAttemptsStartTime = EditorApplication.timeSinceStartup;
 
 #if UNITY_EDITOR_WIN
           // save the server socket so that we can communicate with it later
@@ -617,7 +654,7 @@ namespace Neovim.Editor
         string openFileCmd = binding?.Command ?? TemplateCollection.OpenFileCmdTemplates[0].Command;
         // NOTE: nvim commands like ':drop' dont accept quoted paths, so we must escape them with '\'.
         // Cuz it is sent directly to Neovim, this operation is terminal independent.
-        string cmdOpen = openFileCmd .Replace("{filePath}", filePath.NormalizeWindowsToUnix().Replace(" ", "\\ "));
+        string cmdOpen = openFileCmd.Replace("{filePath}", filePath.NormalizeWindowsToUnix().Replace(" ", "\\ "));
 
         commands.Add(cmdOpen);
 
@@ -638,31 +675,9 @@ namespace Neovim.Editor
         commands.Add("echon ''");
       }
 
-      // try using the existing client
-      if (s_RpcClient != null)
-      {
-        // NOTE: sending commands seperately can cause a race condition within neovim itself (eg. the autocmd
-        // to restore the last cursor position is called between the ':drop file' and 'call cursor()' commands)
-        if (SendCommandsAtomic(commands))
-          return true;
-
-        Debug.Log("Dest 1");
-        DestroyClient();
-      }
-
-      // try to (re)init the client
-      if (TryInitializeRpcClient())
-      {
-        Debug.Log("Conn 2");
-        if (SendCommandsAtomic(commands))
-          return true;
-
-        DestroyClient();
-      }
-
-      Debug.Log("file open failed");
-      // cant connect, probably nvim isnt running
-      return false;
+      // NOTE: sending commands seperately can cause a race condition within neovim itself (eg. the autocmd
+      // to restore the last cursor position is called between the ':drop file' and 'call cursor()' commands)
+      return TryInitializeRpcClientAndExecute(() => SendCommandsAtomic(commands));
     }
 
     private bool SendCommandsAtomic(IEnumerable<string> commands)
@@ -678,7 +693,7 @@ namespace Neovim.Editor
           Debug.Log("net errr");
           return false;
         case InvokeResult.LogicError:
-          Debug.LogError("Error executing command"); // TODO: err mess
+          Debug.LogError($"[neovim.ide] Failed to execute neovim commands: {vimscript}");
           break;
       }
 
@@ -700,7 +715,7 @@ namespace Neovim.Editor
           return false;
         // LogicError means something wrong with command\code\other unexpected error
         case InvokeResult.LogicError:
-          Debug.LogError("Error executing command"); // TODO: err mess
+          Debug.LogError($"[neovim.ide] Failed to execute neovim command: {command}");
           break;
       }
 
@@ -717,9 +732,65 @@ namespace Neovim.Editor
     private static void CleanupResources()
     {
       EditorApplication.quitting -= CleanupResources;
+      EditorApplication.update -= Update;
       AssemblyReloadEvents.beforeAssemblyReload -= CleanupResources;
 
       DestroyClient();
+    }
+
+    private static void Update()
+    {
+      ConnectionAttemptTick();
+
+      // process actions from background threads
+      while (s_ExecutionQueue.TryDequeue(out var action))
+      {
+        try
+        {
+          action.Invoke();
+        }
+        catch (Exception ex)
+        {
+          Debug.LogError(
+            $"[ExternalEditorPlugin] Exception in dispatched action: {ex.Message}\n{ex.StackTrace}"
+          );
+          // TODO: err msg
+        }
+      }
+    }
+
+    private static void ConnectionAttemptTick()
+    {
+      if (!s_ConnectionPending)
+        return;
+      Debug.Log("con tick");
+
+      var currentTime = EditorApplication.timeSinceStartup;
+      var timePassed = currentTime - s_ConnectionLastAttemptTime;
+      if (timePassed <= k_ConnectionAttemptPause)
+      {
+        Debug.Log("con pause not");
+        return;
+      }
+
+      s_ConnectionLastAttemptTime = currentTime;
+      if (TryInitializeRpcClient())
+      {
+        Debug.Log("con init true");
+        s_ConnectionPending = false;
+        return;
+      }
+
+      if (currentTime - s_ConnectionAttemptsStartTime >= k_ConnectionTimeout)
+      {
+        Debug.Log("con timeout");
+        s_ConnectionPending = false;
+      }
+    }
+
+    public static void EnqueueAction(Action action)
+    {
+      s_ExecutionQueue.Enqueue(action);
     }
 
     /// <summary>
@@ -766,10 +837,6 @@ namespace Neovim.Editor
 
       // if rpc command failed - nvim isnt running
       var initRes = TryInstantiateNvimServerInstance(filePath);
-      // HACK: cuz it takes some time to init socket, we cannot create RPC connection immediately after nvim starts.
-      // Since OpenProject is a synchronous method, any connection wait here may cause Unity to hang.
-      // We can fire an async task to wait for the connection, but then we also need to ensure that the s_RpcClient is thread safe to write.
-      // For now, the connection will be established the next time OpenProject is called.
 
       // TODO: ????
 #if UNITY_EDITOR_WIN
@@ -785,55 +852,35 @@ namespace Neovim.Editor
     public static RoslynDiagnosticScope SetAnalyzerDiagnosticScope(RoslynDiagnosticScope scope)
     {
       s_Config.AnalyzerDiagnosticScope = scope;
-      SendNeovimCmd($":lua _G.nvim_unity_analyzer_diagnostic_scope='{s_Config.AnalyzerDiagnosticScope}'<CR>");
+      TryInitializeRpcClientAndExecute(() =>
+        s_NeovimCodeEditor.SendCommand(
+          $":lua _G.nvim_unity_analyzer_diagnostic_scope='{s_Config.AnalyzerDiagnosticScope}'<CR>"
+        )
+      );
       return s_Config.AnalyzerDiagnosticScope;
     }
 
     public static RoslynDiagnosticScope SetCompilerDiagnosticScope(RoslynDiagnosticScope scope)
     {
       s_Config.CompilerDiagnosticScope = scope;
-      SendNeovimCmd($":lua _G.nvim_unity_compiler_diagnostic_scope='{s_Config.CompilerDiagnosticScope}'<CR>");
+      TryInitializeRpcClientAndExecute(() =>
+        s_NeovimCodeEditor.SendCommand(
+          $":lua _G.nvim_unity_compiler_diagnostic_scope='{s_Config.CompilerDiagnosticScope}'<CR>"
+        )
+      );
       return s_Config.CompilerDiagnosticScope;
     }
-
-
-    /// <summary>
-    /// Sends a remote command to the currenly running Neovim server instance.
-    /// </summary>
-    public static void SendNeovimCmd(string cmd)
-    {
-#if UNITY_EDITOR_WIN
-      string app = $"\"{s_Config.NvimExecutablePath}\"";
-#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-      string app = s_Config.NvimExecutablePath;
-#endif
-      using (var p = ProcessUtils.HeadlessProcess())
-      {
-        p.StartInfo.FileName = app;
-        p.StartInfo.Arguments = $"--server {s_ServerSocket} --remote-send \"{cmd}\"";
-#if UNITY_EDITOR_WIN
-        try
-        {
-          p.RunWithAssertion(s_Config.ProcessTimeout);
-        }
-        catch (TimeoutException) { }
-#else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
-        try
-        {
-          p.RunWithAssertion(s_Config.ProcessTimeout);
-        }
-        catch (ExitCodeMismatchException) { }
-        catch (TimeoutException) { }
-#endif
-      }
-    }
-
 
     /// <summary>
     /// Sends a remote command to the currenly running Neovim server instance to restart Roslyn LS.
     /// </summary>
-    public static void RestartRoslynLS() => SendNeovimCmd($":source {s_RestartRoslynLSPath}<CR>");
-
-
+    public static void RestartRoslynLS()
+    {
+      TryInitializeRpcClientAndExecute(() =>
+        s_NeovimCodeEditor.SendCommand(
+          $"source {s_RestartRoslynLSPath.NormalizeWindowsToUnix().Replace(" ", "\\ ")}"
+        )
+      );
+    }
   }
 }

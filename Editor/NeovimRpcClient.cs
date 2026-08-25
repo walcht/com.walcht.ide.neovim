@@ -197,7 +197,7 @@ namespace Neovim.Editor
 
     private void IdentifyMyself()
     {
-      // set out channel info
+      // set the channel info
       SendRequest(
         "nvim_set_client_info",
         new object[]
@@ -210,7 +210,7 @@ namespace Neovim.Editor
         }
       );
 
-      // run setup script
+      // run the setup script
       SendRequest(
         "nvim_command",
         new object[]
@@ -297,10 +297,16 @@ namespace Neovim.Editor
     {
       var method = message[1].To<string>();
 
-      if (method == "UnityAssetSaved" || method == "UnityAssetChanged")
-        UnityAssetChangedHandler(message[2][0].To<string>());
-      else if(method == "UnitySyncAll")
-        UnitySyncAllHandler();
+      switch (method)
+      {
+        case "UnityAssetChanged":
+        case "UnityAssetCreated":
+          UnityAssetChangedHandler(message[2][0].To<string>());
+          break;
+        case "UnitySyncAll":
+          UnitySyncAllHandler();
+          break;
+      }
     }
 
     private void UnityAssetChangedHandler(string absolutePath)
@@ -310,22 +316,26 @@ namespace Neovim.Editor
       if (projectPath == null)
         return;
 
-      EditorApplication.delayCall += () =>
+      // NOTE: We cant call Unity api, such as ImportAsset, from a background thread.
+      // Using EditorApplication.delayCall will only fire when Unity gains focus.
+      // To avoid these issues we queue the actions in a thread-safe queue
+      // and execute them on the main thread in the Update method
+      NeovimCodeEditor.EnqueueAction(() =>
       {
         AssetDatabase.ImportAsset(projectPath, ImportAssetOptions.Default);
 
         Debug.Log($"[Neovim.Unity] Auto-imported: {projectPath}");
-      };
+      });
     }
 
     private void UnitySyncAllHandler()
     {
-      EditorApplication.delayCall += () =>
+      NeovimCodeEditor.EnqueueAction(() =>
       {
         AssetDatabase.Refresh();
 
         Debug.Log($"[Neovim.Unity] Refresh");
-      };
+      });
     }
   }
 }
