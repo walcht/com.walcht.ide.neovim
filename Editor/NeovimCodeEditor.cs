@@ -28,8 +28,8 @@ namespace Neovim.Editor
     // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
     // available for socket type" so we have to listen to a TCP socket instead with a local addr and a random port
     private static string s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
-    private static readonly string s_GetProcessWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessWindowHandle.ps1");
-    private static readonly string s_ReadWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/ReadWindowHandleFromPipeServer.ps1");
+    static readonly string GetProcessWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessWindowHandle.ps1");
+    static readonly string ReadWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/ReadWindowHandleFromPipeServer.ps1");
 #endif
     public static readonly string s_RestartRoslynLSPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/RestartRoslynLS.lua");
 
@@ -247,7 +247,7 @@ namespace Neovim.Editor
 #if UNITY_EDITOR_LINUX
       s_NeovimFocus = new LinuxNeovimWindowFocus();
 #elif UNITY_EDITOR_WIN
-      s_NeovimFocus = new WindowsNeovimWindowFocus(s_ReadWindowHandlePath);
+      s_NeovimFocus = new WindowsNeovimWindowFocus(ReadWindowHandlePath);
 #else
       s_NeovimFocus = new FallbackNeovimWindowFocus();
 #endif

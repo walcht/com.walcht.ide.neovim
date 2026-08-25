@@ -87,14 +87,14 @@ namespace Neovim.Editor
     {
       Debug.Log("connect start");
 
-      if (_isDisposed)
+      if (m_IsDisposed)
         throw new ObjectDisposedException(nameof(NeovimRpcClient));
 
-      await m_TcpClient.ConnectAsync(m_Ip, m_Port);
-      _stream = m_TcpClient.GetStream();
+      m_TcpClient.Connect(m_Ip, m_Port);
+      m_Stream = m_TcpClient.GetStream();
 
-      _listenCancelationSource = new();
-      var token = _listenCancelationSource.Token;
+      m_ListenCancelationSource = new();
+      var token = m_ListenCancelationSource.Token;
       Task.Run(() => ListenLoop(token), token);
 
       IdentifyMyself();
