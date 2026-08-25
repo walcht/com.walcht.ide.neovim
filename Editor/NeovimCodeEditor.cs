@@ -28,8 +28,8 @@ namespace Neovim.Editor
     // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not
     // available for socket type" so we have to listen to a TCP socket instead with a local addr and a random port
     private static string s_ServerSocket = $"127.0.0.1:{NetUtils.GetRandomAvailablePort()}";
-    static readonly string GetProcessWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessWindowHandle.ps1");
-    static readonly string ReadWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/ReadWindowHandleFromPipeServer.ps1");
+    public static readonly string GetProcessWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/GetProcessWindowHandle.ps1");
+    public static readonly string ReadWindowHandlePath = Path.GetFullPath("Packages/com.walcht.ide.neovim/ReadWindowHandleFromPipeServer.ps1");
 #endif
     public static readonly string s_RestartRoslynLSPath = Path.GetFullPath("Packages/com.walcht.ide.neovim/RestartRoslynLS.lua");
 
@@ -583,7 +583,7 @@ namespace Neovim.Editor
             .Replace("{analyzerDiagnosticScope}", s_Config.AnalyzerDiagnosticScope.ToString())
             .Replace("{compilerDiagnosticScope}", s_Config.CompilerDiagnosticScope.ToString())
 #if UNITY_EDITOR_WIN
-            .Replace("{getProcessPPIDScriptPath}", s_GetProcessWindowHandlePath)
+            .Replace("{getProcessPPIDScriptPath}", GetProcessWindowHandlePath)
 #endif
           ;
 
