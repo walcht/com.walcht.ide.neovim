@@ -306,6 +306,9 @@ namespace Neovim.Editor
         case "UnitySyncAll":
           UnitySyncAllHandler();
           break;
+        case "UnityFocus":
+          UnityFocusHandler();
+          break;
       }
     }
 
@@ -335,6 +338,16 @@ namespace Neovim.Editor
         AssetDatabase.Refresh();
 
         Debug.Log($"[Neovim.Unity] Refresh");
+      });
+    }
+
+    private void UnityFocusHandler()
+    {
+      NeovimCodeEditor.EnqueueAction(() =>
+      {
+        // hack - focus EditorWindow (any) window
+        // if this causes any bugs - should use a specific window as SceneView
+        EditorWindow.FocusWindowIfItsOpen<EditorWindow>();
       });
     }
   }

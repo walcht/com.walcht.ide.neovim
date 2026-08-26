@@ -35,9 +35,11 @@ local function cleanup_unity_integration()
 	vim.g.unity_rpc_channel = nil
 
 	vim.api.nvim_clear_autocmds({ group = "UnityIntegrationGroup" })
-	vim.api.nvim_del_user_command("UnitySync")
 
-	vim.notify("Unity RPC disconnected. Cleared commands and autocmds.", vim.log.levels.INFO)
+	vim.api.nvim_del_user_command("UnitySync")
+    vim.api.nvim_del_user_command("UnityFocus")
+
+	vim.notify("Unity RPC disconnected.", vim.log.levels.INFO)
 end
 
 local function check_channel()
@@ -65,6 +67,16 @@ vim.api.nvim_create_user_command("UnitySync", function()
 
 	vim.rpcnotify(chan_id, "UnitySyncAll")
 end, { desc = "Manually synchronize project and reimport assets" })
+
+vim.api.nvim_create_user_command("UnityFocus", function()
+	local chan_id = check_channel()
+
+	if not chan_id then
+		return
+	end
+
+	vim.rpcnotify(chan_id, "UnityFocus")
+end, { desc = "Focus Unity editor" })
 
 local unity_group = vim.api.nvim_create_augroup("UnityIntegrationGroup", { clear = true })
 
