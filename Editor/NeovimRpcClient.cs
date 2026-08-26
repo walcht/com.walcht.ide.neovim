@@ -72,7 +72,7 @@ namespace Neovim.Editor
 
     public NeovimRpcClient(string serverSocket)
     {
-      var parts = ServerSocket.Split(':');
+      var parts = serverSocket.Split(':');
       if (parts.Length != 2 || !int.TryParse(parts[1], out int port))
         throw new ArgumentException("Invalid TCP adress format", nameof(serverSocket));
 

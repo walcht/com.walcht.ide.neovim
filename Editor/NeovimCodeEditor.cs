@@ -256,9 +256,26 @@ namespace Neovim.Editor
       AssemblyReloadEvents.beforeAssemblyReload += CleanupResources;
       EditorApplication.update += Update;
 
+#if UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
       // Try to connect during initialization. If the connection is successful,
       // nvim is already open; otherwise, it will be initialized when project opens
-      TryInitializeRpcClient();
+      TryInitializeRpcClient(s_ServerSocket);
+#else
+      // On windows we must check the saved socket first
+      var prevSocket = s_Config.PrevServerSocket;
+      if (!string.IsNullOrWhiteSpace(prevSocket))
+      {
+        if(TryInitializeRpcClient(prevSocket))
+        {
+          s_ServerSocket = prevSocket;
+        }
+        else
+        {
+          s_Config.PrevServerSocket = string.Empty;
+          s_Config.Save();
+        }
+      }
+#endif
     }
 
     /// <summary>
@@ -484,13 +501,13 @@ namespace Neovim.Editor
       s_Generator.Sync();
     }
 
-    private static bool TryInitializeRpcClient()
+    private static bool TryInitializeRpcClient(string serverSocket)
     {
       Debug.Log("Try init");
 
       if (s_RpcClient != null)
       {
-        if (s_RpcClient.IsConnected)
+        if (s_RpcClient.IsConnected && s_RpcClient.ServerSocket == serverSocket)
           return true;
 
         DestroyClient();
@@ -498,7 +515,7 @@ namespace Neovim.Editor
 
       try
       {
-        var rpcClient = new NeovimRpcClient(s_ServerSocket);
+        var rpcClient = new NeovimRpcClient(serverSocket);
         rpcClient.Connect();
         rpcClient.OnConnectionBreak += OnConnectionBreakHandler;
         s_RpcClient = rpcClient;
@@ -525,7 +542,7 @@ namespace Neovim.Editor
       }
 
       // try to (re)init the client
-      if (TryInitializeRpcClient())
+      if (TryInitializeRpcClient(s_ServerSocket))
       {
         Debug.Log("Conn 2");
         if (action())
@@ -751,10 +768,7 @@ namespace Neovim.Editor
         }
         catch (Exception ex)
         {
-          Debug.LogError(
-            $"[ExternalEditorPlugin] Exception in dispatched action: {ex.Message}\n{ex.StackTrace}"
-          );
-          // TODO: err msg
+          Debug.LogError($"[neovim.ide] failed to execute an action from a background thread: {ex.Message}");
         }
       }
     }
@@ -785,7 +799,7 @@ namespace Neovim.Editor
 
       // connect attempt
       s_ConnectionLastAttemptTime = currentTime;
-      if (TryInitializeRpcClient())
+      if (TryInitializeRpcClient(s_ServerSocket))
       {
         Debug.Log("con init true");
         s_ConnectionPending = false;
@@ -840,16 +854,7 @@ namespace Neovim.Editor
       }
 
       // if rpc command failed - nvim isnt running
-      var initRes = TryInstantiateNvimServerInstance(filePath);
-
-      // TODO: ????
-#if UNITY_EDITOR_WIN
-      // on Windows, listening to a domain socket yields the following error: "neovim Failed to --listen: service not available for socket type"
-      // so we have to listen to a TCP socket instead with a local addr and a random port - this will be overwitten below
-      s_ServerSocket = s_Config.PrevServerSocket;
-#endif
-
-      return initRes;
+      return TryInstantiateNvimServerInstance(filePath);
     }
 
 

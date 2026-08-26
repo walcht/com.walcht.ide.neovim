@@ -10,7 +10,7 @@ namespace Neovim.Editor
     ///   tab, or open in a vertical split, etc.). First entry is the default.
     /// </summary>
     public static readonly (string Command, string Name, string Desc)[] OpenFileCmdTemplates = {
-      ("tabnew {filepath}",
+      ("tabnew {filePath}",
        "Open in new tab",
        "Always opens the file in a new Neovim tab page."),
       ("drop {filePath}",
