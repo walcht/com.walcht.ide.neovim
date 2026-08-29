@@ -37,7 +37,7 @@ local function cleanup_unity_integration()
 	vim.api.nvim_clear_autocmds({ group = "UnityIntegrationGroup" })
 
 	vim.api.nvim_del_user_command("UnitySync")
-    vim.api.nvim_del_user_command("UnityFocus")
+	vim.api.nvim_del_user_command("UnityFocus")
 
 	vim.notify("Unity RPC disconnected.", vim.log.levels.INFO)
 end
@@ -88,6 +88,10 @@ vim.api.nvim_create_autocmd("BufWritePost", {
 			return
 		end
 
+		if vim.bo[opts.buf].buftype ~= "" then
+			return
+		end
+
 		local chan_id = check_channel()
 		if not chan_id then
 			return
@@ -95,7 +99,8 @@ vim.api.nvim_create_autocmd("BufWritePost", {
 
 		local filepath = opts.match
 		-- check if .meta file exists
-		local is_new = vim.uv.fs_stat(filepath .. ".meta") == nil
+		local uv = vim.uv or vim.loop
+		local is_new = uv.fs_stat(filepath .. ".meta") == nil
 
 		if is_new then
 			if vim.g.unity_auto_sync_on_create then
@@ -105,6 +110,63 @@ vim.api.nvim_create_autocmd("BufWritePost", {
 			if vim.g.unity_auto_sync_on_modify then
 				vim.rpcnotify(chan_id, "UnityAssetChanged", filepath)
 			end
+		end
+	end,
+})
+
+-- handle file opens
+-- this is usefull, when the file was created by plugin\terminal\other and opened in nvim afterwards
+vim.api.nvim_create_autocmd("BufReadPost", {
+	group = unity_group,
+	callback = function(opts)
+		if not vim.g.unity_auto_sync or not vim.g.unity_auto_sync_on_create then
+			return
+		end
+
+		if vim.bo[opts.buf].buftype ~= "" then
+			return
+		end
+
+		local chan_id = check_channel()
+		if not chan_id then
+			return
+		end
+
+		local filepath = opts.match
+		-- check if .meta file exists
+		local uv = vim.uv or vim.loop
+		local is_new = uv.fs_stat(filepath .. ".meta") == nil
+
+		if is_new then
+			vim.rpcnotify(chan_id, "UnityAssetCreated", filepath)
+		end
+	end,
+})
+
+-- basic file deletion handling
+-- TODO: popular plugins integration (Neo-tree, NvimTree, etc)
+vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload" }, {
+	group = unity_group,
+	callback = function(opts)
+		if not vim.g.unity_auto_sync then
+			return
+		end
+
+		if opts.match == "" or vim.bo[opts.buf].buftype ~= "" then
+			return
+		end
+
+		local chan_id = check_channel()
+		if not chan_id then
+			return
+		end
+
+		local filepath = opts.match
+		local uv = vim.uv or vim.loop
+
+		-- if file doesnt exist, assume it has been deleted or moved
+		if uv.fs_stat(filepath) == nil then
+			vim.rpcnotify(chan_id, "UnityAssetDeleted", filepath)
 		end
 	end,
 })

@@ -299,9 +299,16 @@ namespace Neovim.Editor
 
       switch (method)
       {
+        // TODO: add UnityAssetMoved notification
         case "UnityAssetChanged":
-        case "UnityAssetCreated":
+          // case "UnityAssetCreated":
           UnityAssetChangedHandler(message[2][0].To<string>());
+          break;
+        case "UnityAssetCreated":
+          UnityAssetCreatedHandler(message[2][0].To<string>());
+          break;
+        case "UnityAssetDeleted":
+          UnityAssetDeletedHandler(message[2][0].To<string>());
           break;
         case "UnitySyncAll":
           UnitySyncAllHandler();
@@ -328,6 +335,32 @@ namespace Neovim.Editor
         AssetDatabase.ImportAsset(projectPath, ImportAssetOptions.Default);
 
         Debug.Log($"[Neovim.Unity] Auto-imported: {projectPath}");
+      });
+    }
+
+    private void UnityAssetCreatedHandler(string absolutePath)
+    {
+      // because moving\renaming files without deleting their .meta files results in compilation errors,
+      // it is safer to perform a full Refresh() rather than importing a separate file
+      NeovimCodeEditor.EnqueueAction(() =>
+      {
+        AssetDatabase.Refresh();
+
+        Debug.Log($"[Neovim.Unity] Auto-imported: {absolutePath}");
+      });
+    }
+
+    private void UnityAssetDeletedHandler(string absolutePath)
+    {
+      NeovimCodeEditor.EnqueueAction(() =>
+      {
+        // you can delete a single asset with DeleteAsset(path)
+        // but you cant do this, if the file has already been deleted... so the ghost asset will remain in the database...
+        // to minimize overhead, we can reimport the parent directory of the deleted asset
+        // upd: recursive reimport of directories close to the project root turns out to be slover, than calling Refresh() (at least at recent versions Unity)
+        // so just Refresh()...
+        AssetDatabase.Refresh();
+        Debug.Log($"deleted by Refresh: {absolutePath}");
       });
     }
 

@@ -92,6 +92,7 @@ namespace Neovim.Editor
     private static INeovimWindowFocus s_NeovimFocus = null;
     private static NeovimRpcClient s_RpcClient = null;
 
+    // TODO: add to the settings window
     private const double k_ConnectionTimeout = 2d;
     private const double k_ConnectionAttemptPause = 0.4d;
 
@@ -138,9 +139,9 @@ namespace Neovim.Editor
         }
       }
 
-      if (!s_Config.ModifierBindings.Any() && !string.IsNullOrWhiteSpace(s_Config.OpenFileArgs))
+      if (!s_Config.ModifierBindings.Any() && !string.IsNullOrWhiteSpace(s_Config.OpenFileCmd))
       {
-        s_Config.ModifierBindings.Add(new ModifierBinding { Modifiers = 0, Command = s_Config.OpenFileArgs });
+        s_Config.ModifierBindings.Add(new ModifierBinding { Modifiers = 0, Command = s_Config.OpenFileCmd });
         s_Config.SetDirty(true);
         s_Config.Save();
       }
@@ -157,13 +158,13 @@ namespace Neovim.Editor
         s_Config.Save();
       }
 
-      if (string.IsNullOrWhiteSpace(s_Config.JumpToCursorPositionArgs))
+      if (string.IsNullOrWhiteSpace(s_Config.JumpToCursorPositionCmd))
       {
         if (!TemplateCollection.JumpToCursorPositionCmdTemplates.Any())
         {
           Debug.LogError($"[neovim.ide] the jump-to-cursor-position arguments templates array is empty");
         }
-        s_Config.JumpToCursorPositionArgs = TemplateCollection.JumpToCursorPositionCmdTemplates[0].Command;
+        s_Config.JumpToCursorPositionCmd = TemplateCollection.JumpToCursorPositionCmdTemplates[0].Command;
         s_Config.Save();
       }
 
@@ -501,6 +502,41 @@ namespace Neovim.Editor
       s_Generator.Sync();
     }
 
+    /// <summary>
+    /// Attempts to execute an RPC action using the current Neovim client.
+    /// If the connection is missing or fails during execution, it tries to reinitialize the client and retry once.
+    /// </summary>
+    /// <param name="rpcAction">An action to execute</param>
+    /// <returns>
+    /// <c>true</c> if the action succeeded, <c>false</c> if the execution failed due to a network or logic error.
+    /// </returns>b
+    private static bool TryInitializeRpcClientAndExecute(Func<NeovimRpcClient,InvokeResult> rpcAction)
+    {
+      // try using the existing client
+      if (s_RpcClient != null)
+      {
+        if(rpcAction(s_RpcClient) == InvokeResult.Success)
+          return true;
+
+        Debug.Log("Dest 1");
+        DestroyClient();
+      }
+
+      // try to (re)init the client
+      if (TryInitializeRpcClient(s_ServerSocket))
+      {
+        Debug.Log("Conn 2");
+        if (rpcAction(s_RpcClient) == InvokeResult.Success)
+          return true;
+
+        DestroyClient();
+      }
+
+      Debug.Log("exec failed");
+      // cant connect, probably nvim isnt running
+      return false;
+    }
+
     private static bool TryInitializeRpcClient(string serverSocket)
     {
       Debug.Log("Try init");
@@ -527,33 +563,6 @@ namespace Neovim.Editor
         Debug.Log("Init failed");
         return false;
       }
-    }
-
-    private static bool TryInitializeRpcClientAndExecute(Func<bool> action)
-    {
-      // try using the existing client
-      if (s_RpcClient != null)
-      {
-        if (action())
-          return true;
-
-        Debug.Log("Dest 1");
-        DestroyClient();
-      }
-
-      // try to (re)init the client
-      if (TryInitializeRpcClient(s_ServerSocket))
-      {
-        Debug.Log("Conn 2");
-        if (action())
-          return true;
-
-        DestroyClient();
-      }
-
-      Debug.Log("exec failed");
-      // cant connect, probably nvim isnt running
-      return false;
     }
 
     private static void DestroyClient()
@@ -679,7 +688,7 @@ namespace Neovim.Editor
         if (line != 1 || column != 0)
         {
           string cmdJump = s_Config
-            .JumpToCursorPositionArgs
+            .JumpToCursorPositionCmd
             .Replace("{line}", line.ToString())
             .Replace("{column}", column.ToString());
 
@@ -694,49 +703,7 @@ namespace Neovim.Editor
 
       // NOTE: sending commands seperately can cause a race condition within neovim itself (eg. the autocmd
       // to restore the last cursor position is called between the ':drop file' and 'call cursor()' commands)
-      return TryInitializeRpcClientAndExecute(() => SendCommandsAtomic(commands));
-    }
-
-    private bool SendCommandsAtomic(IEnumerable<string> commands)
-    {
-      if (s_RpcClient == null)
-        return false;
-
-      var vimscript = string.Join('\n', commands);
-
-      switch (s_RpcClient.NvimExec2(vimscript))
-      {
-        case InvokeResult.NetworkError:
-          Debug.Log("net errr");
-          return false;
-        case InvokeResult.LogicError:
-          Debug.LogError($"[neovim.ide] Failed to execute neovim commands: {vimscript}");
-          break;
-      }
-
-      return true;
-    }
-
-    // send request to Neovim server instance listening on the provided socket path
-    private bool SendCommand(string command)
-    {
-      Debug.Log($"sending cmd {command}");
-      if (s_RpcClient == null)
-        return false;
-
-      switch (s_RpcClient.NvimCommand(command))
-      {
-        // NetworkError means something wrong with connection\socket\client
-        case InvokeResult.NetworkError:
-          Debug.Log("net errr");
-          return false;
-        // LogicError means something wrong with command\code\other unexpected error
-        case InvokeResult.LogicError:
-          Debug.LogError($"[neovim.ide] Failed to execute neovim command: {command}");
-          break;
-      }
-
-      return true;
+      return TryInitializeRpcClientAndExecute(rpcClient => rpcClient.NvimExec2(string.Join('\n', commands)));
     }
 
     private static void OnConnectionBreakHandler()
@@ -861,9 +828,10 @@ namespace Neovim.Editor
     public static RoslynDiagnosticScope SetAnalyzerDiagnosticScope(RoslynDiagnosticScope scope)
     {
       s_Config.AnalyzerDiagnosticScope = scope;
-      TryInitializeRpcClientAndExecute(() =>
-        s_NeovimCodeEditor.SendCommand(
-          $":lua _G.nvim_unity_analyzer_diagnostic_scope='{s_Config.AnalyzerDiagnosticScope}'<CR>"
+      TryInitializeRpcClientAndExecute(rpcClient =>
+        rpcClient.NvimExecLua(
+          $"_G.nvim_unity_analyzer_diagnostic_scope='{s_Config.AnalyzerDiagnosticScope}'",
+          new object[0]
         )
       );
       return s_Config.AnalyzerDiagnosticScope;
@@ -872,9 +840,10 @@ namespace Neovim.Editor
     public static RoslynDiagnosticScope SetCompilerDiagnosticScope(RoslynDiagnosticScope scope)
     {
       s_Config.CompilerDiagnosticScope = scope;
-      TryInitializeRpcClientAndExecute(() =>
-        s_NeovimCodeEditor.SendCommand(
-          $":lua _G.nvim_unity_compiler_diagnostic_scope='{s_Config.CompilerDiagnosticScope}'<CR>"
+      TryInitializeRpcClientAndExecute(rpcCLient =>
+        rpcCLient.NvimExecLua(
+          $"_G.nvim_unity_compiler_diagnostic_scope='{s_Config.CompilerDiagnosticScope}'",
+          new object[0]
         )
       );
       return s_Config.CompilerDiagnosticScope;
@@ -885,8 +854,8 @@ namespace Neovim.Editor
     /// </summary>
     public static void RestartRoslynLS()
     {
-      TryInitializeRpcClientAndExecute(() =>
-        s_NeovimCodeEditor.SendCommand(
+      TryInitializeRpcClientAndExecute(rpcClient =>
+        rpcClient.NvimCommand(
           $"source {s_RestartRoslynLSPath.NormalizeWindowsToUnix().Replace(" ", "\\ ")}"
         )
       );

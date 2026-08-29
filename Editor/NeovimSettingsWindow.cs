@@ -58,7 +58,7 @@ namespace Neovim.Editor
     ////////////////////////////////////////////////////////////////////////////
     // Jump-to-cursor position args
     ////////////////////////////////////////////////////////////////////////////
-    private TextField m_JumpToCursorPosArgsTf;
+    private TextField m_JumpToCursorPosCmdTf;
     private static List<string> s_JumpToCursorPosTemplateNames;
     private static readonly string k_CustomLabel = "Custom";
 
@@ -293,23 +293,23 @@ namespace Neovim.Editor
 
       // jumo-to-cursor-position
       {
-        string currArgs = NeovimCodeEditor.Config.JumpToCursorPositionArgs;
-        string currentTemplateName = GetJumpToCursorPosTemplateName(currArgs);
+        string currCmd = NeovimCodeEditor.Config.JumpToCursorPositionCmd;
+        string currentTemplateName = GetJumpToCursorPosTemplateName(currCmd);
 
-        var container = mainPanel.Q<VisualElement>("jump-to-cursor-pos-args");
+        var container = mainPanel.Q<VisualElement>("jump-to-cursor-pos-cmd");
         var templatesDd = new PopupField<string>("template:", s_JumpToCursorPosTemplateNames, 0);
         templatesDd.SetValueWithoutNotify(currentTemplateName);
         container.Add(templatesDd);
 
-        m_JumpToCursorPosArgsTf = mainPanel.Q<TextField>("jump-to-cursor-pos-args-tf");
-        templatesDd.PlaceBehind(m_JumpToCursorPosArgsTf);
-        m_JumpToCursorPosArgsTf.SetValueWithoutNotify(currArgs);
+        m_JumpToCursorPosCmdTf = mainPanel.Q<TextField>("jump-to-cursor-pos-cmd-tf");
+        templatesDd.PlaceBehind(m_JumpToCursorPosCmdTf);
+        m_JumpToCursorPosCmdTf.SetValueWithoutNotify(currCmd);
 
-        m_JumpToCursorPosArgsTf.RegisterValueChangedCallback(e =>
+        m_JumpToCursorPosCmdTf.RegisterValueChangedCallback(e =>
         {
           string templateName = GetJumpToCursorPosTemplateName(e.newValue);
           templatesDd.SetValueWithoutNotify(templateName);
-          if (e.newValue == NeovimCodeEditor.Config.JumpToCursorPositionArgs)
+          if (e.newValue == NeovimCodeEditor.Config.JumpToCursorPositionCmd)
             return;
           SetDirty(true);
         });
@@ -324,7 +324,7 @@ namespace Neovim.Editor
           var template = TemplateCollection.JumpToCursorPositionCmdTemplates
             .FirstOrDefault(t => t.Name == e.newValue);
           if (template.Name == null) return;
-          m_JumpToCursorPosArgsTf.value = template.Command;
+          m_JumpToCursorPosCmdTf.value = template.Command;
           SetInfoPanel(template);
         });
       }
@@ -471,7 +471,7 @@ namespace Neovim.Editor
         .ToList();
 
       // update jumo-to-cursor-position args
-      m_JumpToCursorPosArgsTf.SetValueWithoutNotify(NeovimCodeEditor.Config.JumpToCursorPositionArgs = m_JumpToCursorPosArgsTf.value);
+      m_JumpToCursorPosCmdTf.SetValueWithoutNotify(NeovimCodeEditor.Config.JumpToCursorPositionCmd = m_JumpToCursorPosCmdTf.value);
 
       // update process timeout
       m_ProcessTimeoutIf.SetValueWithoutNotify(NeovimCodeEditor.Config.ProcessTimeout = m_ProcessTimeoutIf.value);
@@ -532,7 +532,7 @@ namespace Neovim.Editor
 
     private static string GetJumpToCursorPosTemplateName(string args)
     {
-      var (Args, Name, Desc) = TemplateCollection.JumpToCursorPositionCmdTemplates
+      var (Cmd, Name, Desc) = TemplateCollection.JumpToCursorPositionCmdTemplates
         .FirstOrDefault(t => t.Command == args);
       return Name ?? k_CustomLabel;
     }
@@ -663,8 +663,8 @@ namespace Neovim.Editor
         templateDd.SetValueWithoutNotify(currentTemplateName);
 
         // args text field
-        var argsField = row.Q<TextField>("args-tf");
-        argsField.SetValueWithoutNotify(binding.Command);
+        var cmdField = row.Q<TextField>("cmd-tf");
+        cmdField.SetValueWithoutNotify(binding.Command);
 
         // update the info pannel on selection
         templateDd.RegisterCallback<FocusEvent>(_ =>
@@ -685,12 +685,12 @@ namespace Neovim.Editor
           var template = TemplateCollection.OpenFileCmdTemplates
             .FirstOrDefault(t => t.Name == e.newValue);
           if (template.Name == null) return;
-          argsField.value = template.Command;
+          cmdField.value = template.Command;
           m_ModifierBindings[idx].Command = template.Command;
           SetInfoPanel(template);
         });
 
-        argsField.RegisterValueChangedCallback(e =>
+        cmdField.RegisterValueChangedCallback(e =>
         {
           m_ModifierBindings[idx].Command = e.newValue;
           // if user edited manually, update dropdown to Custom
