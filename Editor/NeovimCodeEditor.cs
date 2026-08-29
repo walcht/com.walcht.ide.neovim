@@ -679,7 +679,7 @@ namespace Neovim.Editor
     {
       Debug.Log($"rpc open [{line}, {column}] {filePath}");
 
-      List<string> commands = new();
+      List<string> commands = new List<string>();
       if (!string.IsNullOrWhiteSpace(filePath))
       {
         int currentMods = Event.current != null ? (int)Event.current.modifiers : 0;

@@ -56,7 +56,7 @@ namespace Neovim.Editor
 
       m_Stream = new NetworkStream(m_UnixSocket);
 
-      m_ListenCancelationSource = new();
+      m_ListenCancelationSource = new CancellationTokenSource();
       var token = m_ListenCancelationSource.Token;
       Task.Run(() => ListenLoop(token), token);
 
@@ -93,7 +93,7 @@ namespace Neovim.Editor
       m_TcpClient.Connect(m_Ip, m_Port);
       m_Stream = m_TcpClient.GetStream();
 
-      m_ListenCancelationSource = new();
+      m_ListenCancelationSource = new CancellationTokenSource();
       var token = m_ListenCancelationSource.Token;
       Task.Run(() => ListenLoop(token), token);
 
