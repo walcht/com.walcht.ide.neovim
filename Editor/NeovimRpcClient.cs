@@ -325,17 +325,17 @@ namespace Neovim.Editor
 
     private void UnityAssetChangedHandler(string absolutePath)
     {
-      var projectPath = FileUtility.MakeRelativeToProjectPath(absolutePath);
-
-      if (projectPath == null)
-        return;
-
       // NOTE: We cant call Unity api, such as ImportAsset, from a background thread.
       // Using EditorApplication.delayCall will only fire when Unity gains focus.
       // To avoid these issues we queue the actions in a thread-safe queue
       // and execute them on the main thread in the Update method
       NeovimCodeEditor.EnqueueAction(() =>
       {
+        var projectPath = FileUtility.MakeRelativeToProjectPath(absolutePath);
+
+        if (projectPath == null)
+          return;
+
         AssetDatabase.ImportAsset(projectPath, ImportAssetOptions.Default);
 
         Debug.Log($"[Neovim.Unity] Auto-imported: {projectPath}");
