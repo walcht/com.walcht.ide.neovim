@@ -532,29 +532,24 @@ namespace Neovim.Editor
         if(rpcAction(s_RpcClient) == InvokeResult.Success)
           return true;
 
-        Debug.Log("Dest 1");
         DestroyClient();
       }
 
       // try to (re)init the client
       if (TryInitializeRpcClient(s_ServerSocket))
       {
-        Debug.Log("Conn 2");
         if (rpcAction(s_RpcClient) == InvokeResult.Success)
           return true;
 
         DestroyClient();
       }
 
-      Debug.Log("exec failed");
       // cant connect, probably nvim isnt running
       return false;
     }
 
     private static bool TryInitializeRpcClient(string serverSocket)
     {
-      Debug.Log("Try init");
-
       if (s_RpcClient != null)
       {
         if (s_RpcClient.IsConnected && s_RpcClient.ServerSocket == serverSocket)
@@ -574,15 +569,12 @@ namespace Neovim.Editor
       }
       catch (Exception)
       {
-        Debug.Log("Init failed");
         return false;
       }
     }
 
     private static void DestroyClient()
     {
-      Debug.Log("Destroy");
-
       if (s_RpcClient == null)
         return;
 
@@ -598,8 +590,6 @@ namespace Neovim.Editor
     /// <returns>whether the nvim server instance is successfully instantied.</returns>
     private bool TryInstantiateNvimServerInstance(string filePath, int line = 1, int column = 0)
     {
-      Debug.Log("Init instance ");
-
 #if UNITY_EDITOR_WIN
       string app = $"\"{s_Config.NvimExecutablePath}\"";
 #else  // UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX
@@ -677,8 +667,6 @@ namespace Neovim.Editor
 
     private bool TryOpenFileViaRpc(string filePath, int line = 1, int column = 0)
     {
-      Debug.Log($"rpc open [{line}, {column}] {filePath}");
-
       List<string> commands = new List<string>();
       if (!string.IsNullOrWhiteSpace(filePath))
       {
@@ -722,8 +710,6 @@ namespace Neovim.Editor
 
     private static void OnConnectionBreakHandler()
     {
-      Debug.Log("Connection broken");
-
       DestroyClient();
     }
 
@@ -758,14 +744,12 @@ namespace Neovim.Editor
     {
       if (!s_ConnectionPending)
         return;
-      Debug.Log("con tick");
 
       var currentTime = EditorApplication.timeSinceStartup;
 
       // timeout
       if (currentTime - s_ConnectionAttemptsStartTime >= k_ConnectionTimeout)
       {
-        Debug.Log("con timeout");
         s_ConnectionPending = false;
         return;
       }
@@ -773,18 +757,12 @@ namespace Neovim.Editor
       var timePassed = currentTime - s_ConnectionLastAttemptTime;
       // pause
       if (timePassed <= k_ConnectionAttemptPause)
-      {
-        Debug.Log("con pause not");
         return;
-      }
 
       // connect attempt
       s_ConnectionLastAttemptTime = currentTime;
       if (TryInitializeRpcClient(s_ServerSocket))
-      {
-        Debug.Log("con init true");
         s_ConnectionPending = false;
-      }
     }
 
     public static void EnqueueAction(Action action)
@@ -805,8 +783,6 @@ namespace Neovim.Editor
     /// </returns>
     public bool OpenProject(string filePath = "", int line = -1, int column = -1)
     {
-      Debug.Log($"Open project [{line}, {column}] {filePath}");
-
       if (!string.IsNullOrWhiteSpace(filePath))
       {
         if (!File.Exists(filePath))

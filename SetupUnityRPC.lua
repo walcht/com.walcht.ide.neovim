@@ -38,8 +38,6 @@ local function cleanup_unity_integration()
 
 	vim.api.nvim_del_user_command("UnitySync")
 	vim.api.nvim_del_user_command("UnityFocus")
-
-	vim.notify("Unity RPC disconnected.", vim.log.levels.INFO)
 end
 
 local function check_channel()

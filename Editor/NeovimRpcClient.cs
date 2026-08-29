@@ -46,8 +46,6 @@ namespace Neovim.Editor
     // TODO: async connection??
     public void Connect()
     {
-      Debug.Log("connect start");
-
       if (m_IsDisposed)
         throw new ObjectDisposedException(nameof(NeovimRpcClient));
 
@@ -61,8 +59,6 @@ namespace Neovim.Editor
       Task.Run(() => ListenLoop(token), token);
 
       IdentifyMyself();
-
-      Debug.Log("connected");
     }
 #else // UNITY_EDITOR_WIN
     private readonly string m_Ip;
@@ -85,8 +81,6 @@ namespace Neovim.Editor
 
     public void Connect()
     {
-      Debug.Log("connect start");
-
       if (m_IsDisposed)
         throw new ObjectDisposedException(nameof(NeovimRpcClient));
 
@@ -98,8 +92,6 @@ namespace Neovim.Editor
       Task.Run(() => ListenLoop(token), token);
 
       IdentifyMyself();
-
-      Debug.Log("connected");
     }
 #endif
 
@@ -247,34 +239,21 @@ namespace Neovim.Editor
       // 1. object is being disposed or\and cancellation was requested (_isDisposed == true)
       catch (IOException)
       {
-        Debug.Log("IOEx");
         if (!m_IsDisposed && !ct.IsCancellationRequested)
-        {
-          Debug.Log("Connect broke");
           OnConnectionBreak?.Invoke();
-        }
       }
       // InvalidDataException is usually thrown when:
       // 1. stream was clossed (eg. user closed nvim)
       catch (InvalidDataException)
       {
-        Debug.Log("InvalidDataException");
         if (!m_IsDisposed && !ct.IsCancellationRequested)
-        {
-          Debug.Log("Connect broke");
           OnConnectionBreak?.Invoke();
-        }
       }
       // we dont expect any other exceptions, but if one occurs, we must notify about broken connection
-      catch (Exception e)
+      catch (Exception)
       {
-        Debug.LogError($"err: {e.GetType().Name}, {e.Message}");
-
         if (!m_IsDisposed && !ct.IsCancellationRequested)
-        {
-          Debug.Log("Connect broke");
           OnConnectionBreak?.Invoke();
-        }
       }
     }
 
@@ -337,8 +316,6 @@ namespace Neovim.Editor
           return;
 
         AssetDatabase.ImportAsset(projectPath, ImportAssetOptions.Default);
-
-        Debug.Log($"[Neovim.Unity] Auto-imported: {projectPath}");
       });
     }
 
@@ -349,8 +326,6 @@ namespace Neovim.Editor
       NeovimCodeEditor.EnqueueAction(() =>
       {
         AssetDatabase.Refresh();
-
-        Debug.Log($"[Neovim.Unity] Auto-imported: {absolutePath}");
       });
     }
 
@@ -364,7 +339,6 @@ namespace Neovim.Editor
         // upd: recursive reimport of directories close to the project root turns out to be slover, than calling Refresh() (at least at recent versions Unity)
         // so just Refresh()...
         AssetDatabase.Refresh();
-        Debug.Log($"deleted by Refresh: {absolutePath}");
       });
     }
 
@@ -373,8 +347,6 @@ namespace Neovim.Editor
       NeovimCodeEditor.EnqueueAction(() =>
       {
         AssetDatabase.Refresh();
-
-        Debug.Log($"[Neovim.Unity] Refresh");
       });
     }
 
@@ -384,6 +356,7 @@ namespace Neovim.Editor
       {
         // hack - focus EditorWindow (any) window
         // if this causes any bugs - should use a specific window as SceneView
+        // unfortunately, this doesnt work on Windows
         EditorWindow.FocusWindowIfItsOpen<EditorWindow>();
       });
     }
