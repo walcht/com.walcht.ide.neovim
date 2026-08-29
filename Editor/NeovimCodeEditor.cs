@@ -717,7 +717,7 @@ namespace Neovim.Editor
 
       // NOTE: sending commands seperately can cause a race condition within neovim itself (eg. the autocmd
       // to restore the last cursor position is called between the ':drop file' and 'call cursor()' commands)
-      return TryInitializeRpcClientAndExecute(rpcClient => rpcClient.NvimExec2(string.Join('\n', commands)));
+      return TryInitializeRpcClientAndExecute(rpcClient => rpcClient.NvimExec2(string.Join("\n", commands)));
     }
 
     private static void OnConnectionBreakHandler()
