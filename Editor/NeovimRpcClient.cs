@@ -270,7 +270,11 @@ namespace Neovim.Editor
       {
         Debug.LogError($"err: {e.GetType().Name}, {e.Message}");
 
-        OnConnectionBreak?.Invoke();
+        if (!m_IsDisposed && !ct.IsCancellationRequested)
+        {
+          Debug.Log("Connect broke");
+          OnConnectionBreak?.Invoke();
+        }
       }
     }
 
