@@ -31,9 +31,9 @@ namespace Neovim.Editor
 
 
     /// <summary>
-    /// Arguments associated with this binding that will be supplied to nvim remote command.
+    /// Neovim command associated with this binding that will be sent to nvim.
     /// </summary>
-    public string Args = string.Empty;
+    public string Command = string.Empty;
   }
 
   public class NeovimEditorConfig
@@ -134,18 +134,18 @@ namespace Neovim.Editor
       }
     }
 
-    private string m_OpenFileArgs = string.Empty;
+    private string m_OpenFileCmd = string.Empty;
     /// <summary>
-    /// Current open-file arguments that will be supplied to nvim remote cmd upon opening a file from Unity.
+    /// Current open-file command that will be supplied to nvim remote upon opening a file from Unity.
     /// </summary>
-    public string OpenFileArgs
+    public string OpenFileCmd
     {
-      get => m_OpenFileArgs;
+      get => m_OpenFileCmd;
       set
       {
-        if (value == m_OpenFileArgs)
+        if (value == m_OpenFileCmd)
           return;
-        m_OpenFileArgs = value;
+        m_OpenFileCmd = value;
         m_Dirty = true;
       }
     }
@@ -161,15 +161,15 @@ namespace Neovim.Editor
       }
     }
 
-    private string m_JumpToCursorPositionArgs = string.Empty;
-    public string JumpToCursorPositionArgs
+    private string m_JumpToCursorPositionCmd = string.Empty;
+    public string JumpToCursorPositionCmd
     {
-      get => m_JumpToCursorPositionArgs;
+      get => m_JumpToCursorPositionCmd;
       set
       {
-        if (value == m_JumpToCursorPositionArgs)
+        if (value == m_JumpToCursorPositionCmd)
           return;
-        m_JumpToCursorPositionArgs = value;
+        m_JumpToCursorPositionCmd = value;
         m_Dirty = true;
       }
     }
@@ -261,8 +261,8 @@ namespace Neovim.Editor
         node.Add("TermLaunchCmd", new JSONString(m_TermLaunchCmd));
         node.Add("TermLaunchArgs", new JSONString(m_TermLaunchArgs));
         node.Add("TermLaunchEnv", new JSONString(m_TermLaunchEnv));
-        node.Add("OpenFileArgs", new JSONString(m_OpenFileArgs));
-        node.Add("JumpToCursorPositionArgs", new JSONString(m_JumpToCursorPositionArgs));
+        node.Add("OpenFileCmd", new JSONString(m_OpenFileCmd));
+        node.Add("JumpToCursorPositionCmd", new JSONString(m_JumpToCursorPositionCmd));
         node.Add("ProcessTimeout", new JSONNumber(m_ProcessTimeout));
         node.Add("PrevServerSocket", new JSONString(m_PrevServerSocket));
 #if UNITY_EDITOR_WIN
@@ -284,7 +284,7 @@ namespace Neovim.Editor
             var nodeObj = new JSONObject();
             nodeObj.Add("Modifiers", new JSONNumber(m_ModifierBindings[i].Modifiers));
             nodeObj.Add("Representation", new JSONString(m_ModifierBindings[i].Representation));
-            nodeObj.Add("Args", new JSONString(m_ModifierBindings[i].Args));
+            nodeObj.Add("Command", new JSONString(m_ModifierBindings[i].Command));
             nodeArray.Add(null, nodeObj);
           }
           node.Add("ModifierBindings", nodeArray);
@@ -328,8 +328,8 @@ namespace Neovim.Editor
         config.TermLaunchCmd = (d.GetValueOrDefault("TermLaunchCmd", string.Empty) as JSONString).Value;
         config.TermLaunchArgs = (d.GetValueOrDefault("TermLaunchArgs", string.Empty) as JSONString).Value;
         config.TermLaunchEnv = (d.GetValueOrDefault("TermLaunchEnv", string.Empty) as JSONString).Value;
-        config.OpenFileArgs = (d.GetValueOrDefault("OpenFileArgs", string.Empty) as JSONString).Value;
-        config.JumpToCursorPositionArgs = (d.GetValueOrDefault("JumpToCursorPositionArgs", string.Empty) as JSONString).Value;
+        config.OpenFileCmd = (d.GetValueOrDefault("OpenFileCmd", string.Empty) as JSONString).Value;
+        config.JumpToCursorPositionCmd = (d.GetValueOrDefault("JumpToCursorPositionCmd", string.Empty) as JSONString).Value;
         config.ProcessTimeout = (int)(d.GetValueOrDefault("ProcessTimeout", 150) as JSONNumber).AsULong;
         config.PrevServerSocket = (d.GetValueOrDefault("PrevServerSocket", string.Empty) as JSONString).Value;
 #if UNITY_EDITOR_WIN
@@ -352,15 +352,15 @@ namespace Neovim.Editor
                 !d["ModifierBindings"][i]["Modifiers"].IsNumber ||
                 !d["ModifierBindings"][i].HasKey("Representation") ||
                 !d["ModifierBindings"][i]["Representation"].IsString ||
-                !d["ModifierBindings"][i].HasKey("Args") ||
-                !d["ModifierBindings"][i]["Args"].IsString
+                !d["ModifierBindings"][i].HasKey("Command") ||
+                !d["ModifierBindings"][i]["Command"].IsString
                 )
               continue;
             var mb = new ModifierBinding
             {
               Modifiers = (int)d["ModifierBindings"][i]["Modifiers"].AsULong,
               Representation = d["ModifierBindings"][i]["Representation"].Value,
-              Args = d["ModifierBindings"][i]["Args"].Value
+              Command = d["ModifierBindings"][i]["Command"].Value
             };
             config.ModifierBindings.Add(mb);
           }
