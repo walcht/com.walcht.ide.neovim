@@ -250,7 +250,7 @@ namespace Neovim.Editor
         Debug.Log("IOEx");
         if (!m_IsDisposed && !ct.IsCancellationRequested)
         {
-          Debug.Log("Connect broke"); // TODO: not from main thread
+          Debug.Log("Connect broke");
           OnConnectionBreak?.Invoke();
         }
       }
